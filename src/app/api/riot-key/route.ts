@@ -8,6 +8,8 @@ import {
 import { RiotApiError } from '@/lib/errors';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { getSquadMembers } from '@/lib/storage';
+import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
+import { readJson, requireString, validationErrorResponse } from '@/lib/validate';
 
 const KEY_TTL_MS = 24 * 60 * 60 * 1000; // las keys de desarrollo duran 24h
 
@@ -47,15 +49,25 @@ export async function GET() {
 
 export async function PUT(req: Request) {
   await connection();
+
+  // Rate limit: cambiar la key es raro, lo limitamos fuerte
+  const limited = rateLimitResponse(
+    checkRateLimit(
+      `riot-key:${getClientIp(req)}`,
+      LIMITS.riotKey.limit,
+      LIMITS.riotKey.windowMs
+    )
+  );
+  if (limited) return limited;
+
   try {
-    const body = await req.json();
-    const { key } = body;
+    const parsed = await readJson(req);
+    if (!parsed.ok) return validationErrorResponse(parsed);
 
-    if (!key || typeof key !== 'string') {
-      return NextResponse.json({ error: 'Falta la API key' }, { status: 400 });
-    }
+    const keyR = requireString(parsed.value.key, 'key', { max: 80 });
+    if (!keyR.ok) return validationErrorResponse(keyR);
+    const trimmed = keyR.value;
 
-    const trimmed = key.trim();
     if (!trimmed.startsWith('RGAPI-')) {
       return NextResponse.json(
         {

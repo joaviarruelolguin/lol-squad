@@ -4,6 +4,27 @@ import { getSquadMembers, saveSquadMember, removeSquadMember } from '@/lib/stora
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { RiotApiError, ErrorInfo } from '@/lib/errors';
 import { SquadMember } from '@/lib/types';
+import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
+import {
+  readJson,
+  requireString,
+  optionalString,
+  requireEnum,
+  validationErrorResponse,
+  type ValidationResult,
+} from '@/lib/validate';
+
+/** Enum opcional: si viene vacío, devuelve undefined */
+function optionalEnum<T extends string>(
+  value: unknown,
+  field: string,
+  allowed: readonly T[]
+): ValidationResult<T | undefined> {
+  if (value === undefined || value === null || value === '') {
+    return { ok: true, value: undefined };
+  }
+  return requireEnum(value, field, allowed);
+}
 
 export async function GET() {
   await connection();
@@ -24,16 +45,45 @@ function toErrorInfo(err: unknown): ErrorInfo {
 }
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const { gameName, tagLine, nickname, role, region = 'la2' } = body;
+  // Rate limit: escribir en la squad es raro
+  const limited = rateLimitResponse(
+    checkRateLimit(
+      `squad:${getClientIp(req)}`,
+      LIMITS.squadWrite.limit,
+      LIMITS.squadWrite.windowMs
+    )
+  );
+  if (limited) return limited;
 
-    if (!gameName || !tagLine) {
-      return NextResponse.json(
-        { error: 'Faltan gameName o tagLine' },
-        { status: 400 }
-      );
-    }
+  try {
+    const parsed = await readJson(req);
+    if (!parsed.ok) return validationErrorResponse(parsed);
+    const body = parsed.value;
+
+    const gameNameR = requireString(body.gameName, 'gameName', { max: 32 });
+    if (!gameNameR.ok) return validationErrorResponse(gameNameR);
+
+    const tagLineR = requireString(body.tagLine, 'tagLine', { max: 16 });
+    if (!tagLineR.ok) return validationErrorResponse(tagLineR);
+
+    const nicknameR = optionalString(body.nickname, 'nickname', { max: 60 });
+    if (!nicknameR.ok) return validationErrorResponse(nicknameR);
+
+    const regionR = requireEnum(body.region || 'la2', 'region', [
+      'la1', 'la2', 'na1', 'br1', 'euw1',
+    ] as const);
+    if (!regionR.ok) return validationErrorResponse(regionR);
+
+    const roleR = optionalEnum(body.role, 'role', [
+      'TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT', 'FILL',
+    ] as const);
+    if (!roleR.ok) return validationErrorResponse(roleR);
+
+    const gameName = gameNameR.value;
+    const tagLine = tagLineR.value;
+    const nickname = nicknameR.value;
+    const role = roleR.value;
+    const region = regionR.value;
 
     const client = new RiotApiClient();
     const routing = getRegionalRouting(region);

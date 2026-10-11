@@ -4,6 +4,11 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { SquadMember } from '@/lib/types';
 import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
+import {
+  readJson,
+  requireStringArray,
+  validationErrorResponse,
+} from '@/lib/validate';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
@@ -35,10 +40,17 @@ export async function POST(req: Request) {
   if (limited) return limited;
 
   try {
-    const body = await req.json();
-    const playerIds: string[] = body?.playerIds || [];
+    const parsed = await readJson(req);
+    if (!parsed.ok) return validationErrorResponse(parsed);
 
-    if (!Array.isArray(playerIds) || playerIds.length < 2) {
+    const idsR = requireStringArray(parsed.value.playerIds, 'playerIds', {
+      maxItems: 10,
+      maxLen: 128,
+    });
+    if (!idsR.ok) return validationErrorResponse(idsR);
+
+    const playerIds = idsR.value;
+    if (playerIds.length < 2) {
       return NextResponse.json(
         { error: 'Necesitamos al menos 2 jugadores para balancear.' },
         { status: 400 }

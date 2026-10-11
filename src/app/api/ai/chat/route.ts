@@ -5,6 +5,44 @@ import { RiotApiError, ErrorInfo } from '@/lib/errors';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { getSquadMembers } from '@/lib/storage';
 import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
+import {
+  readJson,
+  requireString,
+  optionalString,
+  validationErrorResponse,
+  type ValidationResult,
+} from '@/lib/validate';
+
+/** Valida el historial del chat: array de { role, content } */
+function optionalChatHistory(value: unknown): ValidationResult<
+  { role: 'user' | 'assistant'; content: string }[]
+> {
+  if (value === undefined || value === null) return { ok: true, value: [] };
+  if (!Array.isArray(value)) {
+    return { ok: false, error: '`history` debe ser una lista de mensajes.', status: 400 };
+  }
+  if (value.length > 50) {
+    return { ok: false, error: '`history` tiene demasiados mensajes (máx. 50).', status: 400 };
+  }
+  const out: { role: 'user' | 'assistant'; content: string }[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') {
+      return { ok: false, error: 'Cada mensaje del historial debe ser un objeto.', status: 400 };
+    }
+    const m = item as Record<string, unknown>;
+    if (m.role !== 'user' && m.role !== 'assistant') {
+      return { ok: false, error: 'Cada mensaje debe tener `role` "user" o "assistant".', status: 400 };
+    }
+    if (typeof m.content !== 'string') {
+      return { ok: false, error: 'Cada mensaje debe tener `content` de texto.', status: 400 };
+    }
+    if (m.content.length > 8000) {
+      return { ok: false, error: 'Un mensaje del historial es demasiado largo (máx. 8000).', status: 400 };
+    }
+    out.push({ role: m.role, content: m.content });
+  }
+  return { ok: true, value: out };
+}
 import { routingFromMatchId } from '@/app/api/flex-matches/route';
 
 export async function POST(req: Request) {
@@ -17,15 +55,31 @@ export async function POST(req: Request) {
   if (limited) return limited;
 
   try {
-    const body = await req.json();
-    const { matchId, message, history = [], chatId, model: requestedModel } = body;
+    // --- Validación de input ---
+    const parsed = await readJson(req);
+    if (!parsed.ok) return validationErrorResponse(parsed);
+    const body = parsed.value;
 
-    if (!matchId || !message) {
-      return NextResponse.json(
-        { error: 'Faltan matchId o mensaje' },
-        { status: 400 }
-      );
-    }
+    const matchIdR = requireString(body.matchId, 'matchId', { max: 40 });
+    if (!matchIdR.ok) return validationErrorResponse(matchIdR);
+
+    const messageR = requireString(body.message, 'message', { max: 2000 });
+    if (!messageR.ok) return validationErrorResponse(messageR);
+
+    const historyR = optionalChatHistory(body.history);
+    if (!historyR.ok) return validationErrorResponse(historyR);
+
+    const chatIdR = optionalString(body.chatId, 'chatId', { max: 60 });
+    if (!chatIdR.ok) return validationErrorResponse(chatIdR);
+
+    const modelR = optionalString(body.model, 'model', { max: 60 });
+    if (!modelR.ok) return validationErrorResponse(modelR);
+
+    const matchId = matchIdR.value;
+    const message = messageR.value;
+    const history = historyR.value;
+    const chatId = chatIdR.value;
+    const requestedModel = modelR.value;
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
