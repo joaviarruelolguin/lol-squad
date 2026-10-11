@@ -4,10 +4,18 @@ import { RiotApiClient } from '@/lib/riot';
 import { RiotApiError, ErrorInfo } from '@/lib/errors';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { getSquadMembers } from '@/lib/storage';
+import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
 import { routingFromMatchId } from '@/app/api/flex-matches/route';
 
 export async function POST(req: Request) {
   await connection();
+
+  // Rate limit: proteger el presupuesto de Gemini
+  const limited = rateLimitResponse(
+    checkRateLimit(`ai-chat:${getClientIp(req)}`, LIMITS.aiChat.limit, LIMITS.aiChat.windowMs)
+  );
+  if (limited) return limited;
+
   try {
     const body = await req.json();
     const { matchId, message, history = [], chatId, model: requestedModel } = body;

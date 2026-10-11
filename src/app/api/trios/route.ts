@@ -4,6 +4,7 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
 import { SquadMember, TrioResult, TrioStat } from '@/lib/types';
+import { trioSynergyRating } from '@/lib/synergy';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
@@ -140,15 +141,5 @@ function synergyRating(
   winrate: number,
   games: number
 ): TrioStat['synergyRating'] {
-  // Con pocas partidas exigimos más winrate para considerar "God Tier"
-  if (games >= 3) {
-    if (winrate >= 65) return 'GOD_TIER';
-    if (winrate >= 50) return 'REGULAR';
-    if (winrate >= 33) return 'FRIA';
-    return 'A_PULIR';
-  }
-  if (winrate >= 75) return 'GOD_TIER';
-  if (winrate >= 55) return 'REGULAR';
-  if (winrate >= 35) return 'FRIA';
-  return 'A_PULIR';
+  return trioSynergyRating(winrate, games);
 }

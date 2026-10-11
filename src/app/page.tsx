@@ -60,6 +60,66 @@ import TrioPanel from '@/components/TrioPanel';
 import TrendsPanel from '@/components/TrendsPanel';
 import WeeklyTab from '@/components/WeeklyTab';
 
+// Indicador de frescura de datos
+function FreshnessBadge({ fetchedAt, ttl }: { fetchedAt: number | null; ttl?: number }) {
+  if (!fetchedAt) return null;
+  const minutes = Math.floor((Date.now() - fetchedAt) / 60000);
+  const stale = minutes > 15;
+
+  return (
+    <span
+      className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+        minutes < 2
+          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+          : stale
+          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+          : 'bg-slate-800/60 text-slate-500 border-slate-700/60'
+      }`}
+      title={
+        minutes === 0
+          ? 'Datos recién cargados'
+          : `Datos de hace ${minutes} minuto${minutes === 1 ? '' : 's'}`
+      }
+    >
+      {minutes === 0 ? 'recién actualizado' : `hace ${minutes}m`}
+    </span>
+  );
+}
+
+// Encabezado de sección (título + descrição + badge opcional)
+function SectionHeader({
+  icon,
+  title,
+  description,
+  badge,
+  color = 'text-slate-100',
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  description?: string;
+  badge?: string;
+  color?: string;
+}) {
+  return (
+    <div className="mb-5">
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <h2 className={`text-xl font-bold flex items-center gap-2 ${color}`}>
+          {icon}
+          {title}
+        </h2>
+        {badge && (
+          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-violet-500/20 text-violet-300 border border-violet-500/40">
+            {badge}
+          </span>
+        )}
+      </div>
+      {description && (
+        <p className="text-sm text-slate-400 mt-1 max-w-3xl">{description}</p>
+      )}
+    </div>
+  );
+}
+
 // Spinner reutilizable
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
   <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
@@ -693,6 +753,14 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
+      {/* Skip link para accesibilidad */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-slate-800 focus:text-slate-100 focus:px-4 focus:py-2 focus:rounded-lg focus:border focus:border-slate-600"
+      >
+        Saltar al contenido
+      </a>
+
       {/* HEADER */}
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -857,18 +925,18 @@ export default function Home() {
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full space-y-8">
+      <main id="main-content" className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full space-y-8">
         {/* TAB: SQUAD */}
         {activeTab === 'squad' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-yellow-400" />
                   Tabla de posiciones
                 </h2>
                 <span className="text-xs bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full border border-slate-700">
-                  {stats.length} Miembros
+                  {stats.length} {stats.length === 1 ? 'miembro' : 'miembros'}
                 </span>
               </div>
 
@@ -983,18 +1051,12 @@ export default function Home() {
         {/* TAB: DUOS */}
         {activeTab === 'duos' && (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <Flame className="w-5 h-5 text-pink-500" />
-                Matriz de Sinergia
-                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-violet-500/20 text-violet-300 border border-violet-500/40">
-                  FLEX
-                </span>
-              </h2>
-              <p className="text-sm text-slate-400">
-                Basada en tus partidas Flex: cuándo jugaron juntos y con quién se gana más.
-              </p>
-            </div>
+            <SectionHeader
+              icon={<Flame className="w-5 h-5 text-pink-500" />}
+              title="Sinergia de la Squad"
+              description="Con quién les va mejor: dúos, tríos, combos de campeones y patrones de cada jugador. Todo basado en partidas Flex reales."
+              badge="FLEX"
+            />
 
             {/* Tendencias por jugador */}
             <TrendsPanel />
@@ -1089,6 +1151,11 @@ export default function Home() {
         {/* TAB: FLEX */}
         {activeTab === 'flex' && (
           <div className="space-y-6">
+            <SectionHeader
+              icon={<Gamepad2 className="w-5 h-5 text-violet-400" />}
+              title="Análisis de Partidas Flex"
+              description="Últimas flexibles (Ranked Flex) de la squad: equipos, campeones, daño, KDA y puntos débiles."
+            />
             {/* COACH IA — inicio de Análisis de Flex */}
             <CoachIA
               flexMatches={flexMatches}
@@ -1153,16 +1220,6 @@ export default function Home() {
                   ))}
                 </div>
               )}
-            </div>
-
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <Gamepad2 className="w-5 h-5 text-violet-400" />
-                Análisis de Partidas Flex
-              </h2>
-              <p className="text-sm text-slate-400">
-                Últimas flexibles (Ranked Flex) de la squad: equipos, campeones, daño, KDA y puntos débiles.
-              </p>
             </div>
 
             {/* Errores */}
@@ -1241,15 +1298,11 @@ export default function Home() {
         {/* TAB: STATS / GRÁFICOS */}
         {activeTab === 'stats' && (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-amber-400" />
-                Estadísticas y Premios
-              </h2>
-              <p className="text-sm text-slate-400">
-                Premios de la squad, winrate por rol y el tilt meter (rendimiento después de una derrota).
-              </p>
-            </div>
+            <SectionHeader
+              icon={<BarChart3 className="w-5 h-5 text-amber-400" />}
+              title="Estadísticas y Premios"
+              description="Premios automáticos, promedios por jugador y el tilt meter (cómo les afecta perder)."
+            />
 
             <StatsTab
               members={stats.map((s) => ({
@@ -1267,15 +1320,11 @@ export default function Home() {
         {/* TAB: SEMANAL */}
         {activeTab === 'weekly' && (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <CalendarDays className="w-5 h-5 text-violet-400" />
-                Resumen Semanal con IA
-              </h2>
-              <p className="text-sm text-slate-400">
-                Análisis automático de las últimas semanas: récords, tendencias y 3 cosas para mejorar por jugador.
-              </p>
-            </div>
+            <SectionHeader
+              icon={<CalendarDays className="w-5 h-5 text-violet-400" />}
+              title="Resumen Semanal con IA"
+              description="Análisis automático de las últimas semanas: récords, tendencias y 3 cosas para mejorar por jugador."
+            />
 
             <WeeklyTab
               members={stats.map((s) => ({
@@ -1291,15 +1340,11 @@ export default function Home() {
         {/* TAB: CUSTOMS */}
         {activeTab === 'customs' && (
           <div className="space-y-8">
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <Crown className="w-5 h-5 text-indigo-400" />
-                Liga Interna de Customs
-              </h2>
-              <p className="text-sm text-slate-400">
-                Fixture, resultados y tabla de posiciones. Victoria = 3 puntos, MVP de la fecha = +1 bonus.
-              </p>
-            </div>
+            <SectionHeader
+              icon={<Crown className="w-5 h-5 text-indigo-400" />}
+              title="Liga Interna de Customs"
+              description="Fixture, resultados y tabla de posiciones. Victoria = 3 puntos, MVP de la fecha = +1 bonus."
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Formulario: registrar partida */}

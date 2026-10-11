@@ -4,6 +4,7 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { RiotApiError, ErrorInfo } from '@/lib/errors';
 import { DuoStat } from '@/lib/types';
+import { duoSynergyRating } from '@/lib/synergy';
 
 export interface DuoResult {
   status: 'ok' | 'partial' | 'error';
@@ -28,10 +29,7 @@ function toErrorInfo(err: unknown): ErrorInfo {
 }
 
 function synergyRating(winrate: number): DuoStat['synergyRating'] {
-  if (winrate >= 60) return 'GOD_TIER';
-  if (winrate >= 45) return 'REGULAR';
-  if (winrate >= 30) return 'FRIA';
-  return 'A_PULIR';
+  return duoSynergyRating(winrate);
 }
 
 export async function GET() {

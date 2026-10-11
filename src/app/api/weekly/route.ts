@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
+import { getMatchesWithCache } from '@/lib/matchCache';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
 import { WeeklySummary, WeeklyPlayerStat } from '@/lib/types';
 
 const MATCHES_PER_PLAYER = 20;
@@ -87,11 +89,12 @@ export async function GET(req: Request) {
 
   let matchesInWindow = 0;
 
-  for (const matchId of orderedMatchIds) {
-    try {
-      const detail = await client.getMatchDetail(matchId, defaultRouting);
-      const info = detail?.info;
-      if (!info || !Array.isArray(info.participants)) continue;
+  // Traemos las partidas con la caché persistente: solo va a Riot lo que falta.
+  // No necesitamos timeline para el resumen semanal, así que lo saltamos.
+  const cachedMatches = await getMatchesWithCache(orderedMatchIds, defaultRouting, false, 3);
+
+  for (const { info } of cachedMatches) {
+    if (!info || !Array.isArray(info.participants)) continue;
 
       const created = info.gameCreation || 0;
       if (created < cutoff) continue; // fuera de la ventana
@@ -120,9 +123,6 @@ export async function GET(req: Request) {
         a.wardsPlaced += p.wardsPlaced || 0;
         a.wardsKilled += p.wardsKilled || 0;
       }
-    } catch {
-      // ignorar
-    }
   }
 
   // Construir stats por jugador
@@ -183,6 +183,16 @@ export async function GET(req: Request) {
 // ---------- POST: generar resumen con IA ----------
 export async function POST(req: Request) {
   await connection();
+
+  // Rate limit: generar un resumen con IA es caro
+  const limited = rateLimitResponse(
+    checkRateLimit(
+      `weekly:${getClientIp(req)}`,
+      LIMITS.weeklyGenerate.limit,
+      LIMITS.weeklyGenerate.windowMs
+    )
+  );
+  if (limited) return limited;
 
   try {
     const body = await req.json();

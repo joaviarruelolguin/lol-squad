@@ -3,6 +3,7 @@ import { connection } from 'next/server';
 import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { SquadMember } from '@/lib/types';
+import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
@@ -22,6 +23,16 @@ interface PlayerPower {
 
 export async function POST(req: Request) {
   await connection();
+
+  // Rate limit: cada balanceo pide datos a Riot
+  const limited = rateLimitResponse(
+    checkRateLimit(
+      `balance:${getClientIp(req)}`,
+      LIMITS.balance.limit,
+      LIMITS.balance.windowMs
+    )
+  );
+  if (limited) return limited;
 
   try {
     const body = await req.json();
