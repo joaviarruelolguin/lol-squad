@@ -195,10 +195,10 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
                     </button>
 
                     {isOpen && (
-                      <div className="px-4 pb-4 space-y-4 border-t border-slate-800">
+                      <div className="px-4 pb-5 pt-4 space-y-5 border-t border-slate-800">
                         {/* Highlights */}
                         <div>
-                          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-2">
+                          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-3">
                             <Trophy className="w-3.5 h-3.5" />
                             Resumen de la semana
                           </div>

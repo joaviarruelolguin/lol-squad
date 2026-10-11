@@ -1135,9 +1135,12 @@ export default function Home() {
                           </div>
                         </div>
 
-                        <div className="text-[11px] text-slate-500 mt-1 flex justify-between">
-                          <span>{d.wins} Ganadas</span>
-                          <span>{d.losses} Perdidas</span>
+                        <div className="text-[11px] text-slate-500 mt-1 flex justify-between items-center">
+                          <span className="text-emerald-400/80">{d.wins} ganadas</span>
+                          <span className="text-slate-600 font-mono text-[10px]">
+                            {d.wins}V{d.losses}D de {d.totalGames}
+                          </span>
+                          <span className="text-rose-400/80">{d.losses} perdidas</span>
                         </div>
                       </div>
                     );

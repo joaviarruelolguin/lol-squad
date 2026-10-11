@@ -150,7 +150,7 @@ export default function TrioPanel() {
                       {lastPlayedDays === 0 ? 'hoy' : `hace ${lastPlayedDays}d`}
                     </span>
                   )}
-                  <span>{t.totalGames} juntos</span>
+                  <span className="text-slate-500">{t.totalGames} juntos</span>
                 </div>
               </div>
 
@@ -181,9 +181,12 @@ export default function TrioPanel() {
                     style={{ width: `${t.winrate}%` }}
                   />
                 </div>
-                <div className="flex items-center justify-between mt-1 text-[10px] text-slate-500 font-mono">
-                  <span>{t.wins} ganadas</span>
-                  <span>{t.losses} perdidas</span>
+                <div className="flex items-center justify-between mt-1.5 text-[10px] text-slate-500 font-mono">
+                  <span className="text-emerald-400/80">{t.wins} ganadas</span>
+                  <span className="text-slate-600">
+                    {t.wins}V{t.losses}D de {t.totalGames}
+                  </span>
+                  <span className="text-rose-400/80">{t.losses} perdidas</span>
                 </div>
               </div>
             </div>
