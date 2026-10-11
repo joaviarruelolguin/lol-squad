@@ -80,6 +80,8 @@ export async function GET() {
     vision: number;
     cs: number;
     gold: number;
+    damageShare: number;
+    visionPerMinute: number;
     champions: Map<string, { games: number; wins: number }>;
   }
 
@@ -96,6 +98,8 @@ export async function GET() {
         vision: 0,
         cs: 0,
         gold: 0,
+        damageShare: 0,
+        visionPerMinute: 0,
         champions: new Map(),
       });
     }
@@ -104,12 +108,14 @@ export async function GET() {
 
   let totalMatchesAnalyzed = 0;
 
-  // --- Obtener detalle de cada partida y agregar ---
+  // --- Un solo pass: obtener detalle y agregar todo ---
   for (const matchId of orderedMatchIds) {
     try {
       const detail = await client.getMatchDetail(matchId, defaultRouting);
       const info = detail?.info;
       if (!info || !Array.isArray(info.participants)) continue;
+
+      const duration = info.gameDuration || 1;
 
       const players: FlexPlayer[] = info.participants.map((p: any) => {
         const squadMember = puuidToMember.get(p.puuid);
@@ -165,6 +171,11 @@ export async function GET() {
         agg.cs += p.cs;
         agg.gold += p.goldEarned;
 
+        // Damage share y vision por minuto
+        const teamTotal = teamDamage.get(p.teamId) || 1;
+        agg.damageShare += p.totalDamageDealtToChampions / teamTotal;
+        agg.visionPerMinute += p.visionScore / (duration / 60);
+
         const champs = agg.champions;
         if (!champs.has(p.championName)) {
           champs.set(p.championName, { games: 0, wins: 0 });
@@ -173,7 +184,7 @@ export async function GET() {
         c.games++;
         if (p.win) c.wins++;
       }
-    } catch (err) {
+    } catch {
       // silencioso: una partida no disponible no rompe el agregado
     }
   }
@@ -185,7 +196,7 @@ export async function GET() {
     const agg = aggs.get(member.id);
     if (!agg || agg.games === 0) continue;
 
-    const { games, wins, kills, deaths, assists, damage, vision, cs, gold, champions } = agg;
+    const { games, wins, kills, deaths, assists, damage, vision, cs, gold, champions, damageShare, visionPerMinute } = agg;
     const losses = games - wins;
     const winrate = Math.round((wins / games) * 100);
     const avgKDA = deaths === 0 ? (kills + assists) : (kills + assists) / deaths;
@@ -233,46 +244,9 @@ export async function GET() {
       avgGold: Math.round(gold / games),
       mostPlayedChampion: mostPlayed,
       championPool,
-      damageShare: 0, // se calcula después
-      visionPerMinute: 0, // se calcula después
+      damageShare: Math.round((damageShare / games) * 100 * 10) / 10,
+      visionPerMinute: Math.round((visionPerMinute / games) * 10) / 10,
     });
-  }
-
-  // Daño share por partido y visión por minuto
-  for (const matchId of orderedMatchIds) {
-    try {
-      const detail = await client.getMatchDetail(matchId, defaultRouting);
-      const info = detail?.info;
-      if (!info || !Array.isArray(info.participants)) continue;
-      const duration = info.gameDuration || 1;
-
-      const teamDamage = new Map<number, number>();
-      for (const p of info.participants) {
-        teamDamage.set(p.teamId, (teamDamage.get(p.teamId) || 0) + (p.totalDamageDealtToChampions || 0));
-      }
-
-      for (const p of info.participants) {
-        const member = puuidToMember.get(p.puuid);
-        if (!member) continue;
-        const m = metrics.find((x) => x.memberId === member.id);
-        if (!m) continue;
-
-        const teamTotal = teamDamage.get(p.teamId) || 1;
-        m.damageShare += (p.totalDamageDealtToChampions || 0) / teamTotal;
-        m.visionPerMinute += (p.visionScore || 0) / (duration / 60);
-      }
-    } catch {
-      // ignorar
-    }
-  }
-
-  // Promediar damageShare y visionPerMinute
-  for (const m of metrics) {
-    const agg = aggs.get(m.memberId);
-    if (agg && agg.games > 0) {
-      m.damageShare = Math.round((m.damageShare / agg.games) * 100 * 10) / 10;
-      m.visionPerMinute = Math.round((m.visionPerMinute / agg.games) * 10) / 10;
-    }
   }
 
   // Ordenar por winrate descendente

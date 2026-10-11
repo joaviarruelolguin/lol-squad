@@ -48,6 +48,8 @@ import {
   PlayerMetricsResult,
 } from '@/lib/types';
 import type { ErrorInfo } from '@/lib/errors';
+import CoachIA from '@/components/CoachIA';
+import PlayerMetricsCard from '@/components/PlayerMetricsCard';
 
 // Spinner reutilizable
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -56,53 +58,6 @@ const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; classNam
     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
   </svg>
 );
-
-// Renderizador de markdown ligero para el chat de la IA
-const MarkdownText = ({ text }: { text: string }) => {
-  const renderLine = (line: string, key: number) => {
-    // Headers
-    if (line.startsWith('#### ')) {
-      return <h5 key={key} className="font-bold text-slate-100 mt-2 mb-1 text-xs">{renderInline(line.slice(5))}</h5>;
-    }
-    if (line.startsWith('### ')) {
-      return <h4 key={key} className="font-bold text-slate-100 mt-2 mb-1 text-sm">{renderInline(line.slice(4))}</h4>;
-    }
-    if (line.startsWith('## ')) {
-      return <h3 key={key} className="font-bold text-slate-100 mt-2 mb-1 text-sm">{renderInline(line.slice(3))}</h3>;
-    }
-    if (line.startsWith('# ')) {
-      return <h2 key={key} className="font-bold text-slate-100 mt-2 mb-1 text-base">{renderInline(line.slice(2))}</h2>;
-    }
-    // Listas
-    if (line.startsWith('- ') || line.startsWith('• ')) {
-      return (
-        <div key={key} className="flex gap-1.5 ml-2">
-          <span className="text-slate-500">•</span>
-          <span>{renderInline(line.slice(2))}</span>
-        </div>
-      );
-    }
-    // Línea normal
-    return <p key={key} className="leading-relaxed">{renderInline(line)}</p>;
-  };
-
-  const renderInline = (text: string): React.ReactNode => {
-    // Dividir por **bold** y *italic*
-    const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} className="font-semibold text-slate-100">{part.slice(2, -2)}</strong>;
-      }
-      if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-        return <em key={i} className="italic text-slate-300">{part.slice(1, -1)}</em>;
-      }
-      return <span key={i}>{part}</span>;
-    });
-  };
-
-  const lines = text.split('\n');
-  return <div className="space-y-1">{lines.map((line, i) => renderLine(line, i))}</div>;
-};
 
 export default function Home() {
   const [stats, setStats] = useState<MemberResult[]>([]);
@@ -677,7 +632,7 @@ export default function Home() {
               <h1 className="text-xl font-bold text-slate-100">
                 Squad Central // LoL
               </h1>
-              <p className="text-xs text-slate-400 font-mono">Datos reales de Riot. Sin inventos.</p>
+              <p className="text-xs text-slate-400 font-mono hidden sm:inline">Datos reales de Riot. Sin inventos.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -760,7 +715,7 @@ export default function Home() {
 
       {/* NAV TABS */}
       <div className="border-b border-slate-800/80 bg-slate-900/20">
-        <div className="max-w-7xl mx-auto px-4 flex gap-6">
+        <div className="max-w-7xl mx-auto px-4 flex gap-6 overflow-x-auto flex-nowrap">
           <button
             onClick={() => setActiveTab('squad')}
             className={`py-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition ${
@@ -857,8 +812,8 @@ export default function Home() {
                 )}
 
                 <form onSubmit={handleAddMember} className="space-y-4">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div className="col-span-2 sm:col-span-2">
                       <label className="text-xs font-semibold text-slate-300 block mb-1">Game Name</label>
                       <input
                         type="text"
@@ -1032,217 +987,27 @@ export default function Home() {
         {activeTab === 'flex' && (
           <div className="space-y-6">
             {/* COACH IA — inicio de Análisis de Flex */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-base font-bold flex items-center gap-2 text-white">
-                  <Bot className="w-5 h-5 text-emerald-400" />
-                  Coach IA
-                  <span className="text-[10px] font-normal text-slate-500">
-                    (Beta · Gemini gratuito)
-                  </span>
-                </h3>
-                <div className="flex items-center gap-2">
-                  {/* Historial de chats */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setChatHistoryOpen((v) => !v)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition"
-                      title="Historial de chats"
-                    >
-                      <Clock className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Chats</span>
-                      {chatHistory.length > 0 && (
-                        <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                          {chatHistory.length}
-                        </span>
-                      )}
-                    </button>
-                    {chatHistoryOpen && (
-                      <div className="absolute right-0 z-30 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
-                        <div className="px-3 py-2 border-b border-slate-800 text-xs font-semibold text-slate-400">
-                          Historial de chats
-                        </div>
-                        {chatHistory.length === 0 ? (
-                          <div className="px-3 py-4 text-xs text-slate-500 text-center">
-                            No hay chats guardados
-                          </div>
-                        ) : (
-                          <div className="max-h-64 overflow-y-auto">
-                            {chatHistory.map((c) => (
-                              <button
-                                key={c.id}
-                                onClick={async () => {
-                                  try {
-                                    const res = await fetch('/api/ai/chats', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ chatId: c.id }),
-                                    }).then((r) => r.json());
-                                    if (res.chat) {
-                                      const msgs = res.chat.messages || [];
-                                      const newHistory = [...msgs] as any;
-                                      newHistory._chatId = c.id;
-                                      setAiHistory(newHistory);
-                                      setAiMatchId(res.chat.matchId || '');
-                                      setAiReply(null);
-                                      setAiMessage('');
-                                      setAiError(null);
-                                      setChatHistoryOpen(false);
-                                    }
-                                  } catch (err) {
-                                    // silencioso
-                                  }
-                                }}
-                                className="w-full text-left px-3 py-2.5 hover:bg-slate-800 transition border-b border-slate-800/50"
-                              >
-                                <div className="text-xs font-medium text-slate-200 truncate">
-                                  {c.title}
-                                </div>
-                                <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
-                                  <span>{c.messageCount} mensajes</span>
-                                  <span>·</span>
-                                  <span>{new Date(c.updatedAt).toLocaleDateString('es-AR')}</span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={handleNewChat}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Nuevo</span>
-                  </button>
-                  <button
-                    onClick={() => setChatExpanded((v) => !v)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition"
-                  >
-                    {chatExpanded ? 'Comprimir' : 'Expandir'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Selector de partida personalizado */}
-              <div className="relative mb-3">
-                <button
-                  onClick={() => setMatchPickerOpen((v) => !v)}
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between gap-2 hover:border-slate-600 transition"
-                >
-                  <span className={aiMatchId ? 'text-slate-100' : 'text-slate-500'}>
-                    {aiMatchId
-                      ? (() => {
-                          const m = flexMatches.find((fm) => fm.matchId === aiMatchId);
-                          return m
-                            ? `${formatFlexDate(m.date)} · ${m.squadMembers
-                                .map((s) => s.gameName)
-                                .join(' + ')}`
-                            : 'Partida seleccionada';
-                        })()
-                      : 'Elegí una partida Flex...'}
-                  </span>
-                  <span className="text-slate-500 text-xs shrink-0">
-                    {matchPickerOpen ? '▲' : '▼'}
-                  </span>
-                </button>
-
-                {matchPickerOpen && (
-                  <div className="absolute z-20 mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                    {flexMatches.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-slate-500">
-                        No hay partidas cargadas
-                      </div>
-                    ) : (
-                      flexMatches.map((m) => (
-                        <button
-                          key={m.matchId}
-                          onClick={() => {
-                            setAiMatchId(m.matchId);
-                            setMatchPickerOpen(false);
-                          }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-800 transition flex flex-col gap-0.5 ${
-                            aiMatchId === m.matchId
-                              ? 'bg-emerald-500/10 text-emerald-200'
-                              : 'text-slate-200'
-                          }`}
-                        >
-                          <span className="font-semibold text-xs text-slate-400">
-                            {formatFlexDate(m.date)}
-                          </span>
-                          <span className="truncate">
-                            {m.squadMembers.map((s) => s.gameName).join(' + ')}
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {chatExpanded && (
-                <>
-                  {/* Mensajes del chat */}
-                  {aiHistory.length > 0 && (
-                    <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
-                      {aiHistory.map((h, i) => (
-                        <div
-                          key={i}
-                          className={`text-xs rounded-lg px-3 py-2 ${
-                            h.role === 'user'
-                              ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-100'
-                              : 'bg-slate-800/60 border border-slate-700 text-slate-200'
-                          }`}
-                        >
-                          <div className="font-bold mb-0.5">
-                            {h.role === 'user' ? 'Vos' : 'Coach'}
-                          </div>
-                          {h.role === 'user' ? (
-                            <div className="whitespace-pre-wrap">{h.content}</div>
-                          ) : (
-                            <MarkdownText text={h.content} />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {aiError && (
-                    <div className="bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2 text-rose-300 text-xs flex items-start gap-2 mb-3">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <span>{aiError}</span>
-                    </div>
-                  )}
-
-                  {/* Input */}
-                  <form onSubmit={handleAiChat} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={aiMessage}
-                      onChange={(e) => setAiMessage(e.target.value)}
-                      placeholder="Ej: resumí la partida y dame 3 tips..."
-                      className="flex-1 bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
-                    />
-                    <button
-                      type="submit"
-                      disabled={aiLoading || !aiMatchId}
-                      className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-4 py-2 rounded-lg text-sm transition flex items-center justify-center gap-2 min-w-[120px]"
-                    >
-                      {aiLoading ? (
-                        <>
-                          <Spinner size="w-4 h-4" />
-                          <span>Preparando respuesta...</span>
-                        </>
-                      ) : (
-                        'Preguntar'
-                      )}
-                    </button>
-                  </form>
-                </>
-              )}
-            </div>
+            <CoachIA
+              flexMatches={flexMatches}
+              aiMatchId={aiMatchId}
+              setAiMatchId={setAiMatchId}
+              aiMessage={aiMessage}
+              setAiMessage={setAiMessage}
+              aiHistory={aiHistory}
+              aiLoading={aiLoading}
+              aiError={aiError}
+              chatExpanded={chatExpanded}
+              setChatExpanded={setChatExpanded}
+              matchPickerOpen={matchPickerOpen}
+              setMatchPickerOpen={setMatchPickerOpen}
+              chatHistory={chatHistory}
+              chatHistoryOpen={chatHistoryOpen}
+              setChatHistoryOpen={setChatHistoryOpen}
+              handleAiChat={handleAiChat}
+              handleNewChat={handleNewChat}
+              loadChatHistory={loadChatHistory}
+              formatFlexDate={formatFlexDate}
+            />
 
             {/* MÉTRICAS AGREGADAS POR JUGADOR */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
@@ -1278,101 +1043,7 @@ export default function Home() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {playerMetrics.map((m, idx) => (
-                    <div
-                      key={m.memberId}
-                      className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 space-y-3"
-                    >
-                      {/* Header */}
-                      <div className="flex items-center gap-3">
-                        <div className="relative">
-                          <img
-                            src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/${m.profileIconId}.png`}
-                            alt={m.gameName}
-                            className="w-10 h-10 rounded-lg border border-slate-600"
-                          />
-                          {idx === 0 && (
-                            <Crown className="w-4 h-4 text-amber-400 absolute -top-1.5 -right-1.5" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-bold text-sm text-white truncate">{m.gameName}</div>
-                          <div className="text-[10px] text-slate-500">"{m.nickname}"</div>
-                        </div>
-                        <div className="text-right">
-                          <div className={`text-lg font-black ${m.winrate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {m.winrate}%
-                          </div>
-                          <div className="text-[10px] text-slate-500">winrate</div>
-                        </div>
-                      </div>
-
-                      {/* Stats grid */}
-                      <div className="grid grid-cols-4 gap-2">
-                        <div className="text-center">
-                          <div className="text-sm font-bold text-slate-200">{m.avgKDA}</div>
-                          <div className="text-[9px] text-slate-500 uppercase">KDA</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-sm font-bold text-slate-200">{m.avgDamage > 0 ? `${(m.avgDamage / 1000).toFixed(1)}k` : '—'}</div>
-                          <div className="text-[9px] text-slate-500 uppercase">Daño</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-sm font-bold text-slate-200">{m.avgVisionScore}</div>
-                          <div className="text-[9px] text-slate-500 uppercase">Visión</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-sm font-bold text-slate-200">{m.avgCS}</div>
-                          <div className="text-[9px] text-slate-500 uppercase">CS</div>
-                        </div>
-                      </div>
-
-                      {/* Campeón más jugado */}
-                      {m.mostPlayedChampion && (
-                        <div className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-2.5 py-1.5">
-                          <img
-                            src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${m.mostPlayedChampion.name}.png`}
-                            alt={m.mostPlayedChampion.name}
-                            className="w-6 h-6 rounded"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-semibold text-slate-200 truncate">
-                              {m.mostPlayedChampion.name}
-                            </div>
-                            <div className="text-[10px] text-slate-500">
-                              {m.mostPlayedChampion.games} partidas · {m.mostPlayedChampion.winrate}% WR
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Pool de campeones */}
-                      {m.championPool.length > 0 && (
-                        <div className="flex gap-1.5 flex-wrap">
-                          {m.championPool.slice(0, 4).map((c) => (
-                            <div
-                              key={c.name}
-                              className="flex items-center gap-1 bg-slate-900/50 rounded px-1.5 py-0.5"
-                              title={`${c.name}: ${c.games} partidas, ${c.winrate}% WR`}
-                            >
-                              <img
-                                src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${c.name}.png`}
-                                alt={c.name}
-                                className="w-4 h-4 rounded-sm"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                              />
-                              <span className="text-[10px] text-slate-400">{c.games}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Footer */}
-                      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-700/50">
-                        <span>{m.wins}V - {m.losses}D</span>
-                        <span>{m.totalGames} partidas</span>
-                      </div>
-                    </div>
+                    <PlayerMetricsCard key={m.memberId} metric={m} idx={idx} />
                   ))}
                 </div>
               )}
