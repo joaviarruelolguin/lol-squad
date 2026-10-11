@@ -96,7 +96,7 @@ export async function GET() {
     scannedMatches++;
 
     const created = info.gameCreation || 0;
-    const durationMin = (info.gameDuration || 0) / 60000;
+    const durationMin = (info.gameDuration || 0) / 60;
     const hour = new Date(created).getHours();
     const dayOfWeek = new Date(created).getDay();
 
@@ -125,21 +125,52 @@ export async function GET() {
       const frames = timeline?.info?.frames || [];
       if (frames.length === 0) continue;
 
-      const pidToMember = new Map<number, SquadMember>();
-      info.participants.forEach((p: any, idx: number) => {
+      // Mapear participantId → miembro. Riot usa dos convenciones:
+      //  - match detail: participantId explícito (suele venir 1-based)
+      //  - timeline: puede usar el índice+1
+      // Construimos ambos mapas y usamos el que coincida, sin doble conteo.
+      const participants: any[] = info.participants;
+      const mapByField = new Map<number, SquadMember>();
+      const mapByIndex = new Map<number, SquadMember>();
+      participants.forEach((p: any, idx: number) => {
         const m = puuidToMember.get(p.puuid);
-        if (m) pidToMember.set(idx + 1, m);
+        if (!m) return;
+        if (typeof p.participantId === 'number') mapByField.set(p.participantId, m);
+        mapByIndex.set(idx + 1, m);
       });
+
+      const resolveMember = (pid: number): SquadMember | undefined =>
+        mapByField.get(pid) ?? mapByIndex.get(pid);
 
       for (const frame of frames) {
         for (const ev of frame?.events || []) {
-          if (ev.EventType !== 'Death') continue;
-          // En eventos Death, el participantId es el quemurió
-          const pid = ev.participantId;
-          if (!pid) continue;
-          const m = pidToMember.get(pid);
-          if (!m) continue;
-          getAgg(m.id).deathMinutes.push(Math.round(frame.timestamp / 60000));
+          // Formato nuevo (dataVersion 2): type === 'CHAMPION_KILL'.
+          // La víctima se deduce de victimDamageDealt[].participantId.
+          if (ev.type === 'CHAMPION_KILL') {
+            const victimPids = new Set<number>();
+            for (const d of ev.victimDamageDealt || []) {
+              if (typeof d.participantId === 'number') victimPids.add(d.participantId);
+            }
+            for (const pid of victimPids) {
+              const m = resolveMember(pid);
+              if (!m) continue;
+              getAgg(m.id).deathMinutes.push(
+                Math.round((ev.timestamp ?? frame.timestamp) / 60000)
+              );
+            }
+            continue;
+          }
+
+          // Formato legacy: EventType === 'Death'
+          if (ev.EventType === 'Death') {
+            const pid = ev.participantId;
+            if (!pid) continue;
+            const m = resolveMember(pid);
+            if (!m) continue;
+            getAgg(m.id).deathMinutes.push(
+              Math.round((ev.timestamp ?? frame.timestamp) / 60000)
+            );
+          }
         }
       }
     } catch { /* timeline no disponible */ }

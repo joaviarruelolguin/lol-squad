@@ -20,6 +20,96 @@ export function getRegionalRouting(region: RiotRegion): RegionalRouting {
 // Caché compartida en memoria (vive mientras dura el proceso del servidor)
 export const cache = new SimpleCache(5 * 60 * 1000);
 
+// ============================================================
+// Rate limiter global: las dev keys de Riot permiten ~2 req/seg
+// Serializamos las peticiones para no comernos el 429.
+// ============================================================
+class RateLimiter {
+  private queue: Promise<unknown> = Promise.resolve();
+  private lastCall = 0;
+  private readonly minInterval: number;
+
+  constructor(requestsPerSecond = 2) {
+    this.minInterval = 1000 / requestsPerSecond;
+  }
+
+  /** Encola una tarea y la ejecuta respetando el intervalo mínimo */
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(async () => {
+      const now = Date.now();
+      const wait = this.lastCall + this.minInterval - now;
+      if (wait > 0) {
+        await new Promise((r) => setTimeout(r, wait));
+      }
+      this.lastCall = Date.now();
+      return task();
+    });
+    // Mantenemos la cadena viva aunque una tarea falle
+    this.queue = result.catch(() => undefined);
+    return result;
+  }
+}
+
+const globalRateLimiter = new RateLimiter(2);
+
+/** Pausa global: si Riot dice 429, todos esperamos un poco */
+let globalCooldownUntil = 0;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Reintenta ante errores transitorios (429, 5xx, timeout de red).
+ * Backoff exponencial con jitter para no sincronizar los reintentos.
+ */
+async function withRetries<T>(
+  task: () => Promise<T>,
+  opts: { maxAttempts?: number; label?: string } = {}
+): Promise<T> {
+  const maxAttempts = opts.maxAttempts ?? 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Respetamos la pausa global si hay una activa
+    const cooldown = globalCooldownUntil - Date.now();
+    if (cooldown > 0) {
+      await sleep(cooldown);
+    }
+
+    try {
+      return await task();
+    } catch (err) {
+      lastError = err;
+
+      const type = err instanceof RiotApiError ? err.type : null;
+      const isRetryable =
+        type === 'RATE_LIMIT' ||
+        type === 'SERVER_ERROR' ||
+        type === 'NETWORK_ERROR';
+
+      if (!isRetryable || attempt === maxAttempts) {
+        throw err;
+      }
+
+      // Backoff exponencial: 1s, 2s, 4s... + jitter
+      const baseDelay = 1000 * Math.pow(2, attempt - 1);
+      const jitter = Math.random() * 500;
+      const delay = Math.min(baseDelay + jitter, 15000);
+
+      // Si fue un 429, activamos pausa global para todos
+      if (type === 'RATE_LIMIT') {
+        globalCooldownUntil = Date.now() + delay;
+      }
+
+      console.warn(
+        `[riot] ${opts.label || 'request'} intento ${attempt}/${maxAttempts} falló (${type}). Reintentando en ${Math.round(delay)}ms`
+      );
+      await sleep(delay);
+    }
+  }
+
+  throw lastError;
+}
+
 // TTLs específicos por tipo de dato
 const TTL = {
   account: 24 * 60 * 60 * 1000,   // 24h: el Riot ID casi no cambia
@@ -50,35 +140,43 @@ export class RiotApiClient {
       return cached;
     }
 
-    // 2. Consultar Riot
-    let res: Response;
-    try {
-      const token = await this.getApiKey();
-      res = await fetch(url, {
-        headers: { 'X-Riot-Token': token },
-      });
-    } catch (err) {
-      throw RiotApiError.network(err);
-    }
+    // 2. Consultar Riot (con rate limit global + reintentos automáticos)
+    const token = await this.getApiKey();
+    const label = url.split('/').slice(-2).join('/').slice(0, 60);
 
-    if (!res.ok) {
-      let detail = `${res.status} ${res.statusText}`;
-      try {
-        const text = await res.text();
-        try {
-          const parsed = JSON.parse(text);
-          detail = parsed?.status?.message || detail;
-        } catch {
-          detail = text || detail;
-        }
-      } catch {
-        /* ignore */
-      }
-      // Los errores NO se cachean (así se puede reintentar)
-      throw RiotApiError.fromStatus(res.status, detail);
-    }
+    const data = await withRetries(
+      () =>
+        globalRateLimiter.run(async () => {
+          let res: Response;
+          try {
+            res = await fetch(url, {
+              headers: { 'X-Riot-Token': token },
+            });
+          } catch (err) {
+            throw RiotApiError.network(err);
+          }
 
-    const data = (await res.json()) as T;
+          if (!res.ok) {
+            let detail = `${res.status} ${res.statusText}`;
+            try {
+              const text = await res.text();
+              try {
+                const parsed = JSON.parse(text);
+                detail = parsed?.status?.message || detail;
+              } catch {
+                detail = text || detail;
+              }
+            } catch {
+              /* ignore */
+            }
+            // Los errores NO se cachean (así se puede reintentar)
+            throw RiotApiError.fromStatus(res.status, detail);
+          }
+
+          return (await res.json()) as T;
+        }),
+      { maxAttempts: 3, label }
+    );
 
     // 3. Guardar en caché
     cache.set(url, data, ttlMs);
