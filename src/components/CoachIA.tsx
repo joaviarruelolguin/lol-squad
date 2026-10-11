@@ -390,7 +390,10 @@ export default function CoachIA({
           )}
 
           {/* Input */}
-          <form onSubmit={handleAiChat} className="flex flex-col sm:flex-row gap-2">
+          <form
+            onSubmit={handleAiChat}
+            className="flex flex-col sm:flex-row gap-2 mt-5 pt-4 border-t border-slate-800/60"
+          >
             <input
               type="text"
               value={aiMessage}

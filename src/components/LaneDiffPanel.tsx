@@ -73,7 +73,7 @@ export default function LaneDiffPanel({ matchId }: { matchId: string }) {
   if (!data) return null;
 
   return (
-    <div className="border-t border-slate-800 pt-3 mt-3 space-y-3">
+    <div className="border-t border-slate-800 pt-4 mt-4 space-y-3">
       <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
         <TrendingUp className="w-3.5 h-3.5" />
         Diferenciales de línea (oro / XP)
