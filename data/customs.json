@@ -1,0 +1,32 @@
+[
+  {
+    "id": "match_1791725623492",
+    "date": "2026-10-11T13:33:43.492Z",
+    "teamAName": "OKTOBOND",
+    "teamBName": "BIGBURUNDANGA",
+    "teamA": [
+      "MYSR4gwtgnhfB_ROtI1uAErsCTahFDjNf0uA6V32cASTfoFbamCkQ8ydNwuVs3lKDmmkg0DQdBvuPA",
+      "CtDuLE2fpaS2daq10WifiIXwBj8cvkuptHWzZm6aH2-5Ra4endorE532LpZbOWjPfnEZFHcUQxULAg"
+    ],
+    "teamB": [
+      "xRhPOc9LLXgPwdCvqxSbQBJ5kLsfzneOTH-FWzSbujiZK2p-x20KCAowp5ePiZjlK30dnxBveQ4YVg",
+      "KuzHcU5pSg9KV7htMQ3eTaLqUZ2Jcoj3EaVFGBTBEmupti9K7Mc9bCBhmJ8YkqSiQk6_bPaouA-ocA"
+    ],
+    "winner": "A"
+  },
+  {
+    "id": "match_1791725660404",
+    "date": "2026-10-11T13:34:20.404Z",
+    "teamAName": "EQUIBIG",
+    "teamBName": "RICKYKAISER",
+    "teamA": [
+      "Pu1VpqQc6O9vX4Cs6zs6nzdN32Oz_Pk-i_ZEwrLfbMXZxy-_JBvaT2xx39dXPwvucudAAke19SmW4Q",
+      "xRhPOc9LLXgPwdCvqxSbQBJ5kLsfzneOTH-FWzSbujiZK2p-x20KCAowp5ePiZjlK30dnxBveQ4YVg"
+    ],
+    "teamB": [
+      "MYSR4gwtgnhfB_ROtI1uAErsCTahFDjNf0uA6V32cASTfoFbamCkQ8ydNwuVs3lKDmmkg0DQdBvuPA",
+      "KuzHcU5pSg9KV7htMQ3eTaLqUZ2Jcoj3EaVFGBTBEmupti9K7Mc9bCBhmJ8YkqSiQk6_bPaouA-ocA"
+    ],
+    "winner": "B"
+  }
+]

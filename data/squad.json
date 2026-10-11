@@ -1,0 +1,62 @@
+[
+  {
+    "id": "Pu1VpqQc6O9vX4Cs6zs6nzdN32Oz_Pk-i_ZEwrLfbMXZxy-_JBvaT2xx39dXPwvucudAAke19SmW4Q",
+    "gameName": "Equilibrista",
+    "tagLine": "LAS",
+    "nickname": "Andresito",
+    "role": "MID",
+    "puuid": "Pu1VpqQc6O9vX4Cs6zs6nzdN32Oz_Pk-i_ZEwrLfbMXZxy-_JBvaT2xx39dXPwvucudAAke19SmW4Q",
+    "profileIconId": 2074,
+    "summonerLevel": 622,
+    "region": "la2",
+    "addedAt": "2026-10-11T06:06:07.674Z"
+  },
+  {
+    "id": "CtDuLE2fpaS2daq10WifiIXwBj8cvkuptHWzZm6aH2-5Ra4endorE532LpZbOWjPfnEZFHcUQxULAg",
+    "gameName": "Jayce Bond 007",
+    "tagLine": "LAS",
+    "nickname": "Nico",
+    "role": "JUNGLE",
+    "puuid": "CtDuLE2fpaS2daq10WifiIXwBj8cvkuptHWzZm6aH2-5Ra4endorE532LpZbOWjPfnEZFHcUQxULAg",
+    "profileIconId": 5840,
+    "summonerLevel": 505,
+    "region": "la2",
+    "addedAt": "2026-10-11T06:07:18.670Z"
+  },
+  {
+    "id": "KuzHcU5pSg9KV7htMQ3eTaLqUZ2Jcoj3EaVFGBTBEmupti9K7Mc9bCBhmJ8YkqSiQk6_bPaouA-ocA",
+    "gameName": "RickyBurundanga",
+    "tagLine": "LAS",
+    "nickname": "Manu",
+    "role": "TOP",
+    "puuid": "KuzHcU5pSg9KV7htMQ3eTaLqUZ2Jcoj3EaVFGBTBEmupti9K7Mc9bCBhmJ8YkqSiQk6_bPaouA-ocA",
+    "profileIconId": 685,
+    "summonerLevel": 399,
+    "region": "la2",
+    "addedAt": "2026-10-11T06:08:35.273Z"
+  },
+  {
+    "id": "MYSR4gwtgnhfB_ROtI1uAErsCTahFDjNf0uA6V32cASTfoFbamCkQ8ydNwuVs3lKDmmkg0DQdBvuPA",
+    "gameName": "Oktokaiser",
+    "tagLine": "LAS",
+    "nickname": "Santi",
+    "role": "MID",
+    "puuid": "MYSR4gwtgnhfB_ROtI1uAErsCTahFDjNf0uA6V32cASTfoFbamCkQ8ydNwuVs3lKDmmkg0DQdBvuPA",
+    "profileIconId": 6239,
+    "summonerLevel": 212,
+    "region": "la2",
+    "addedAt": "2026-10-11T06:09:32.482Z"
+  },
+  {
+    "id": "xRhPOc9LLXgPwdCvqxSbQBJ5kLsfzneOTH-FWzSbujiZK2p-x20KCAowp5ePiZjlK30dnxBveQ4YVg",
+    "gameName": "bigJoa0",
+    "tagLine": "LAS",
+    "nickname": "Joaco",
+    "role": "ADC",
+    "puuid": "xRhPOc9LLXgPwdCvqxSbQBJ5kLsfzneOTH-FWzSbujiZK2p-x20KCAowp5ePiZjlK30dnxBveQ4YVg",
+    "profileIconId": 27,
+    "summonerLevel": 195,
+    "region": "la2",
+    "addedAt": "2026-10-11T06:10:03.142Z"
+  }
+]

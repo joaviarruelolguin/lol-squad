@@ -1,0 +1,157 @@
+import { NextResponse } from 'next/server';
+import { connection } from 'next/server';
+import { RiotApiClient } from '@/lib/riot';
+import { RiotApiError, ErrorInfo } from '@/lib/errors';
+import { routingFromMatchId } from '@/app/api/flex-matches/route';
+
+export async function POST(req: Request) {
+  await connection();
+  try {
+    const body = await req.json();
+    const { matchId, message, history = [] } = body;
+
+    if (!matchId || !message) {
+      return NextResponse.json(
+        { error: 'Faltan matchId o mensaje' },
+        { status: 400 }
+      );
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          error:
+            'No está configurada la API de IA. Generá una API Key gratuita en Google AI Studio (aistudio.google.com) y agregá GEMINI_API_KEY en el archivo .env.local.',
+          errorType: 'API_KEY_MISSING',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Modelo configurable (por si Gemini renombra versiones)
+    const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+
+    // 1. Traer el detalle de la partida (cacheado 24h)
+    const client = new RiotApiClient();
+    const routing = routingFromMatchId(matchId);
+    let detail: any;
+    try {
+      detail = await client.getMatchDetail(matchId, routing);
+    } catch (err) {
+      const info = err instanceof RiotApiError ? err.toInfo() : {
+        type: 'UNKNOWN' as const,
+        message: 'No se pudo cargar la partida.',
+      };
+      return NextResponse.json({ error: info.message, errorType: info.type }, { status: 400 });
+    }
+
+    const info = detail?.info;
+    if (!info || !Array.isArray(info.participants)) {
+      return NextResponse.json({ error: 'Partida sin datos válidos.' }, { status: 400 });
+    }
+
+    // 2. Construir el contexto compacto de la partida
+    const context = buildMatchContext(info);
+
+    // 3. Armar el historial de conversación para Gemini
+    const contents = [
+      {
+        role: 'user',
+        parts: [
+          {
+            text: `Contexto de la partida Flex:\n\n${context}\n\nEl usuario quiere que analices esta partida. Respondé siempre en español, con tono constructivo y de ayuda (sin insultar a nadie).`,
+          },
+        ],
+      },
+      ...history
+        .filter((h: any) => h && h.role && h.content)
+        .slice(-8) // limitar historial para no saturar
+        .map((h: any) => ({
+          role: h.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: String(h.content) }],
+        })),
+      { role: 'user', parts: [{ text: String(message) }] },
+    ];
+
+    const systemPrompt = `Sos un coach de League of Legends especializado en partidas Flex (Ranked Flex 5v5) de un grupo de amigos. 
+Tu tarea: analizar la partida con datos reales (KDA, daño, visión, campeones), dar resúmenes claros, detectar puntos a mejorar y dar tips concretos y accionables.
+Reglas:
+- Tono constructivo y amigable: nunca defenestres ni insultes a nadie. Usá frases como "pueden mejorar X" en lugar de "jugó horrible".
+- Apoyate SÓLO en los datos del contexto. No inventes estadísticas.
+- Sé conciso: resumí en 3-6 viñetas cuando corresponda, y dá 1-2 tips prácticos.
+- Respondé siempre en español (rioplatense, casual).`;
+
+    const aiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents,
+        }),
+      }
+    );
+
+    if (!aiRes.ok) {
+      const text = await aiRes.text();
+      let msg = 'Error al consultar la IA.';
+      try {
+        const parsed = JSON.parse(text);
+        msg = parsed?.error?.message || msg;
+      } catch {
+        /* ignore */
+      }
+      return NextResponse.json({ error: msg, errorType: 'AI_ERROR' }, { status: 502 });
+    }
+
+    const aiData = await aiRes.json();
+    const reply =
+      aiData?.candidates?.[0]?.content?.parts
+        ?.map((p: any) => p.text)
+        .join('') || 'La IA no devolvió una respuesta.';
+
+    return NextResponse.json({ reply });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+function buildMatchContext(info: any): string {
+  const date = new Date(info.gameCreation).toLocaleString('es-AR');
+  const durationMin = Math.floor((info.gameDuration || 0) / 60);
+
+  const teams = [100, 200].map((teamId) => {
+    const players = (info.participants || []).filter(
+      (p: any) => p.teamId === teamId
+    );
+    const win = players[0]?.win ?? false;
+    const totalDamage = players.reduce(
+      (s: number, p: any) => s + (p.totalDamageDealtToChampions || 0),
+      0
+    );
+    return { teamId, win, players, totalDamage };
+  });
+
+  const lines: string[] = [];
+  lines.push(`Fecha: ${date}`);
+  lines.push(`Duración: ${durationMin} minutos`);
+  lines.push(`Versión: ${info.gameVersion || 'desconocida'}`);
+  lines.push('');
+
+  for (const team of teams) {
+    lines.push(
+      `Equipo ${team.teamId === 100 ? 'A' : 'B'} (${team.win ? 'VICTORIA' : 'DERROTA'}) - Daño total: ${(team.totalDamage / 1000).toFixed(1)}k`
+    );
+    for (const p of team.players) {
+      const cs = (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
+      lines.push(
+        `  - ${p.riotIdGameName}: ${p.championName} (${p.lane}) | K/D/A ${p.kills}/${p.deaths}/${p.assists} | Daño ${(p.totalDamageDealtToChampions / 1000).toFixed(1)}k | Visión ${p.visionScore} | CS ${cs} | Oro ${(p.goldEarned / 1000).toFixed(1)}k`
+      );
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
