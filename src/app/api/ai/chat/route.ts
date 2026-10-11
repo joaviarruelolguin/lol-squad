@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { RiotApiClient } from '@/lib/riot';
-import { RiotApiError, ErrorInfo } from '@/lib/errors';
+import { RiotApiError } from '@/lib/errors';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { getSquadMembers } from '@/lib/storage';
 import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';

@@ -5,7 +5,6 @@ import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
 import {
   SquadMember,
-  RegionalRouting,
   FlexPlayer,
   PlayerMetrics,
   PlayerMetricsResult,

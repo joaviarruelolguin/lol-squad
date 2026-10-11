@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { getSquadMembers, saveSquadMember } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
-import { RiotApiError, ErrorInfo, fromNetworkError, fromStatus } from '@/lib/errors';
-import { MemberStats, RankedStats, ChampionMastery, SquadMember } from '@/lib/types';
+import { RiotApiError, ErrorInfo, fromNetworkError } from '@/lib/errors';
+import { RankedStats, ChampionMastery, SquadMember } from '@/lib/types';
 import { getChampionInfo } from '@/lib/ddragon';
 
 export interface MemberResult {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CalendarDays, Sparkles, RefreshCw, ChevronDown, Target, Trophy } from 'lucide-react';
+import { CalendarDays, Sparkles, ChevronDown, Target, Trophy } from 'lucide-react';
 import {
   Skeleton,
   SkeletonText,

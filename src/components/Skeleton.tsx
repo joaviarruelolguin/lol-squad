@@ -1,5 +1,3 @@
-import React from 'react';
-
 /** Bloque base con el shimmer animado */
 export function Skeleton({ className = '' }: { className?: string }) {
   return (

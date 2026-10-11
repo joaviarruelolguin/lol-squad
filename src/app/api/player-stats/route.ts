@@ -216,11 +216,6 @@ export async function GET() {
     const agg = aggs.get(member.id);
     if (!agg || agg.games === 0) continue;
 
-    const winrate = Math.round((agg.wins / agg.games) * 100);
-    const avgKDA = agg.deaths === 0
-      ? agg.kills + agg.assists
-      : ((agg.kills + agg.assists) / agg.deaths).toFixed(2);
-
     // Awards
     if (agg.deaths / agg.games >= 8) {
       awards.push({ memberId: member.id, title: 'El que más se murió', emoji: '💀', value: `${(agg.deaths / agg.games).toFixed(1)} muertes/partida` });
@@ -228,7 +223,9 @@ export async function GET() {
     if (agg.wardsPlaced / agg.games >= 15) {
       awards.push({ memberId: member.id, title: 'Ward Bot', emoji: '👁️', value: `${(agg.wardsPlaced / agg.games).toFixed(1)} wards/partida` });
     }
-    if (agg.kills + agg.assists / agg.games >= 10) {
+    // Ojo con la precedencia: hay que promediar la SUMA, no sumar el promedio.
+    // agg.kills y agg.assists son totales acumulados, no promedios.
+    if ((agg.kills + agg.assists) / agg.games >= 10) {
       awards.push({ memberId: member.id, title: 'Máquina de kills', emoji: '🔥', value: `${((agg.kills + agg.assists) / agg.games).toFixed(1)} K+A/partida` });
     }
     if (agg.damage / agg.games >= 30000) {

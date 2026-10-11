@@ -1,5 +1,5 @@
 import { RiotRegion, RegionalRouting } from './types';
-import { RiotApiError, ErrorInfo } from './errors';
+import { RiotApiError } from './errors';
 import { SimpleCache } from './cache';
 import { getRiotKey } from './riotKey';
 

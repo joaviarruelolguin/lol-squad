@@ -79,7 +79,6 @@ export class RiotApiError extends Error {
   }
 
   static network(err: unknown): RiotApiError {
-    const detail = err instanceof Error ? err.message : String(err);
     return new RiotApiError('NETWORK_ERROR', ERROR_MESSAGES.NETWORK_ERROR);
   }
 

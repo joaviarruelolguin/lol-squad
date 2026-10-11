@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Clock, Plus, AlertCircle, Cpu, CircleCheck } from 'lucide-react';
 import { FlexMatch } from '@/lib/types';
 import LaneDiffPanel from './LaneDiffPanel';
+import { formatFlexDate } from './FlexMatchCard';
 import { Skeleton } from './Skeleton';
 
 // Spinner reutilizable
@@ -84,7 +85,6 @@ interface CoachIAProps {
   handleAiChat: (e: React.FormEvent) => void;
   handleNewChat: () => void;
   loadChatHistory: () => Promise<void>;
-  formatFlexDate: (d: string) => string;
   onLoadChat: (messages: { role: 'user' | 'assistant'; content: string }[], matchId: string) => void;
   selectedModel: string;
   onModelChange: (m: string) => void;
@@ -109,7 +109,6 @@ export default function CoachIA({
   handleAiChat,
   handleNewChat,
   loadChatHistory,
-  formatFlexDate,
   onLoadChat,
   selectedModel,
   onModelChange,

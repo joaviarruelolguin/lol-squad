@@ -1,10 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-  BarChart, Bar, CartesianGrid, XAxis, YAxis,
-  ResponsiveContainer, Tooltip,
-} from 'recharts';
 import { Trophy, Eye, Flame, Swords, Target } from 'lucide-react';
 import { PlayerStatsResult, PlayerMetrics } from '@/lib/types';
 import {

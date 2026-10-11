@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
-import { ErrorInfo } from '@/lib/errors';
 import { SquadMember, LaneDiffResult, LaneDiffPlayer } from '@/lib/types';
 
 // Minutos en los que sacamos el diferencial
@@ -26,7 +25,6 @@ export async function GET(req: Request) {
     (m): m is SquadMember & { puuid: string } => Boolean(m.puuid)
   );
   const client = new RiotApiClient();
-  const errors: ErrorInfo[] = [];
 
   const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
   const puuidToMember = new Map<string, SquadMember>(

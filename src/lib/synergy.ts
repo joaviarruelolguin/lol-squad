@@ -1,4 +1,4 @@
-import type { DuoStat, TrioStat } from './types';
+import type { DuoStat } from './types';
 
 export type SynergyRating = DuoStat['synergyRating'];
 

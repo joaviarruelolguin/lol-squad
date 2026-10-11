@@ -178,8 +178,6 @@ export async function POST(req: Request) {
 
     const sumA = teamA.reduce((s, p) => s + p.overall, 0);
     const sumB = teamB.reduce((s, p) => s + p.overall, 0);
-    const avgA = teamA.length > 0 ? Math.round(sumA / teamA.length) : 0;
-    const avgB = teamB.length > 0 ? Math.round(sumB / teamB.length) : 0;
 
     // Intentar compensar: si el desequilibrio es grande, mover un jugador
     if (Math.abs(sumA - sumB) > Math.max(sumA, sumB) * 0.15 && teamA.length > 1 && teamB.length > 1) {
