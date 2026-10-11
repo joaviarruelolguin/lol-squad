@@ -295,3 +295,27 @@ export interface LaneDiffResult {
   checkpoints: LaneDiffCheckpoint[];
 }
 
+// ---------- Recomendador de composición ----------
+export interface ChampCombo {
+  champions: string[];
+  size: number; // 2 = duo, 5 = composición completa
+  wins: number;
+  games: number;
+  winrate: number;
+}
+
+export interface RoleFill {
+  role: string;
+  games: number;
+  wins: number;
+  winrate: number;
+}
+
+export interface CompositionResult {
+  status: 'ok' | 'partial' | 'error';
+  errors: ErrorInfo[];
+  champCombos: ChampCombo[];
+  roleFills: RoleFill[];
+  scannedMatches: number;
+}
+

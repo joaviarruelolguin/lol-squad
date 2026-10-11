@@ -52,6 +52,7 @@ import type { ErrorInfo } from '@/lib/errors';
 import CoachIA from '@/components/CoachIA';
 import PlayerMetricsCard from '@/components/PlayerMetricsCard';
 import StatsTab from '@/components/StatsTab';
+import CompositionPanel from '@/components/CompositionPanel';
 
 // Spinner reutilizable
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -927,6 +928,9 @@ export default function Home() {
                 Basada en tus partidas Flex: cuándo jugaron juntos y con quién se gana más.
               </p>
             </div>
+
+            {/* Recomendador de composición */}
+            <CompositionPanel />
 
             {/* Errores globales del análisis */}
             {duoData && duoData.errors.length > 0 && (
