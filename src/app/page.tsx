@@ -55,6 +55,7 @@ import PlayerMetricsCard from '@/components/PlayerMetricsCard';
 import StatsTab from '@/components/StatsTab';
 import CompositionPanel from '@/components/CompositionPanel';
 import TrioPanel from '@/components/TrioPanel';
+import TrendsPanel from '@/components/TrendsPanel';
 import WeeklyTab from '@/components/WeeklyTab';
 
 // Spinner reutilizable
@@ -986,6 +987,9 @@ export default function Home() {
                 Basada en tus partidas Flex: cuándo jugaron juntos y con quién se gana más.
               </p>
             </div>
+
+            {/* Tendencias por jugador */}
+            <TrendsPanel />
 
             {/* Matriz de tríos */}
             <TrioPanel />

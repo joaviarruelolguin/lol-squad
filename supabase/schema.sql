@@ -102,5 +102,17 @@ create table if not exists public.weekly_summaries (
   created_at timestamptz default now()
 );
 
+-- Caché persistente de partidas (evita hitting los rate limits de Riot)
+-- Solo consultamos a Riot las partidas que NO están acá.
+create table if not exists public.match_cache (
+  match_id text primary key,
+  detail jsonb not null,       -- respuesta de /matches/{id} (info completo)
+  timeline jsonb,              -- respuesta de /matches/{id}/timeline (opcional)
+  fetched_at timestamptz default now()
+);
+
+create index if not exists idx_match_cache_fetched_at
+  on public.match_cache (fetched_at desc);
+
 -- (Opcional) RLS: dejamos las tablas accesibles desde el servidor.
 -- Como usamos la service role key en el backend, no hace falta habilitar RLS.

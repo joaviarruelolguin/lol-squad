@@ -319,6 +319,39 @@ export interface CompositionResult {
   scannedMatches: number;
 }
 
+// ---------- Tendencias por jugador ----------
+export interface PlayerTrend {
+  memberId: string;
+  gameName: string;
+  nickname: string;
+  profileIconId: number;
+  games: number;
+  wins: number;
+  losses: number;
+  winrate: number;
+  avgKills: number;
+  avgDeaths: number;
+  avgAssists: number;
+  avgDamage: number;
+  avgVision: number;
+  csPerMinute: number;
+  hasEnoughData: boolean;
+  worstDeathWindow: string; // ej: "12-17" = minutos
+  worstHour: { hour: number; deathsPerGame: number; games: number } | null;
+  worstDay: { day: number; name: string; deathsPerGame: number; games: number } | null;
+  last10Results: boolean[]; // oldest → newest
+  currentStreakType: 'win' | 'loss' | null;
+  currentStreakLength: number;
+}
+
+export interface TrendResult {
+  status: 'ok' | 'error';
+  error?: string;
+  trends: PlayerTrend[];
+  scannedMatches: number;
+  minTrendGames?: number;
+}
+
 // ---------- Matriz de tríos ----------
 export interface TrioStat {
   memberIds: string[];
