@@ -5,6 +5,7 @@ import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
 import { SquadMember, TrioResult, TrioStat } from '@/lib/types';
 import { trioSynergyRating } from '@/lib/synergy';
+import { guardRead } from '@/lib/rateLimit';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
@@ -12,6 +13,9 @@ const MIN_GAMES = 2; // mínimo de partidas para que un trío sea confiable
 
 export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'trios');
+  if (limited) return limited;
 
   const allMembers = await getSquadMembers();
   const members = allMembers.filter(

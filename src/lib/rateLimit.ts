@@ -104,4 +104,24 @@ export const LIMITS = {
   balance: { limit: 15, windowMs: 60_000 },      // 15 balanceos/min
   riotKey: { limit: 5, windowMs: 300_000 },     // 5 cambios de key/5min
   squadWrite: { limit: 10, windowMs: 60_000 },   // 10 escrituras/min
+  // Lecturas. Vienen varias por carga de página (stats, duos, trios, métricas),
+  // así que el límite es holgado: frena bucles y ataques casuales sin joder
+  // al uso normal de 5 personas con varias pestañas abiertas.
+  read: { limit: 60, windowMs: 60_000 },
 } as const;
+
+/**
+ * Guard para los GET que llegan a Riot.
+ *
+ * Devuelve la respuesta 429 si hay que cortar, o `null` para seguir.
+ * El bucket es por endpoint + IP, así que se permiten 60/min por ruta.
+ */
+export function guardRead(req: Request, scope: string): Response | null {
+  return rateLimitResponse(
+    checkRateLimit(
+      `read:${scope}:${getClientIp(req)}`,
+      LIMITS.read.limit,
+      LIMITS.read.windowMs
+    )
+  );
+}

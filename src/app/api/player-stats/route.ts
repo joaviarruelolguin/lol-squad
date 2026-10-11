@@ -4,9 +4,13 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
 import { SquadMember, PlayerStatsResult, PlayerAward } from '@/lib/types';
+import { guardRead } from '@/lib/rateLimit';
 
-export async function GET() {
+export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'player-stats');
+  if (limited) return limited;
 
   const allMembers = await getSquadMembers();
   const members = allMembers.filter(

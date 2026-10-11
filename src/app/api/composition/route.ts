@@ -4,6 +4,7 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
 import { SquadMember, CompositionResult, ChampCombo } from '@/lib/types';
+import { guardRead } from '@/lib/rateLimit';
 
 const MATCHES_PER_PLAYER = 20;
 const MIN_GAMES = 2; // mínimo de partidas para que un combo sea confiable
@@ -20,6 +21,9 @@ const ROLE_MAP: Record<string, string> = {
 
 export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'composition');
+  if (limited) return limited;
 
   const { searchParams } = new URL(req.url);
   // Opcional: ?members=id1,id2,id3 (para recomendar composición específica)

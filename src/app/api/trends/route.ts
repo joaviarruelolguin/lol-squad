@@ -4,6 +4,7 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { getMatchesWithCache } from '@/lib/matchCache';
 import { SquadMember, TrendResult, PlayerTrend } from '@/lib/types';
+import { guardRead } from '@/lib/rateLimit';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
@@ -41,8 +42,11 @@ function newAgg(): Agg {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'trends');
+  if (limited) return limited;
 
   const allMembers = await getSquadMembers();
   const members = allMembers.filter(

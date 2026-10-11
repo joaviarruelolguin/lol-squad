@@ -1,4 +1,4 @@
-﻿/** Bloque base con el shimmer animado */
+/** Bloque base con el shimmer animado */
 export function Skeleton({ className = '' }: { className?: string }) {
   return (
     <div className={`relative overflow-hidden rounded-md bg-slate-800/60 ${className}`}>

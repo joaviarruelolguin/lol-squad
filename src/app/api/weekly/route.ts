@@ -4,7 +4,7 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { getMatchesWithCache } from '@/lib/matchCache';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
-import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp, rateLimitResponse, guardRead, LIMITS } from '@/lib/rateLimit';
 import { WeeklySummary, WeeklyPlayerStat } from '@/lib/types';
 
 const MATCHES_PER_PLAYER = 20;
@@ -26,6 +26,9 @@ interface Agg {
 
 export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'weekly');
+  if (limited) return limited;
 
   const { searchParams } = new URL(req.url);
   const weeks = Math.min(8, Math.max(1, Number(searchParams.get('weeks') || 4)));

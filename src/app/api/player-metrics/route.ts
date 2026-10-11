@@ -9,9 +9,13 @@ import {
   PlayerMetrics,
   PlayerMetricsResult,
 } from '@/lib/types';
+import { guardRead } from '@/lib/rateLimit';
 
-export async function GET() {
+export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'player-metrics');
+  if (limited) return limited;
 
   const allMembers = await getSquadMembers();
   const members = allMembers.filter(

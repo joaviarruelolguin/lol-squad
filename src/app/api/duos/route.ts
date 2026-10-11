@@ -5,6 +5,7 @@ import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { RiotApiError, ErrorInfo } from '@/lib/errors';
 import { DuoStat } from '@/lib/types';
 import { duoSynergyRating } from '@/lib/synergy';
+import { guardRead } from '@/lib/rateLimit';
 
 export interface DuoResult {
   status: 'ok' | 'partial' | 'error';
@@ -32,8 +33,11 @@ function synergyRating(winrate: number): DuoStat['synergyRating'] {
   return duoSynergyRating(winrate);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'duos');
+  if (limited) return limited;
   const allMembers = await getSquadMembers();
   const members = allMembers.filter((m) => m.puuid);
   const client = new RiotApiClient();

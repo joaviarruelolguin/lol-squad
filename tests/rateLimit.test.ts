@@ -3,6 +3,7 @@ import {
   checkRateLimit,
   getClientIp,
   rateLimitResponse,
+  guardRead,
   LIMITS,
 } from '@/lib/rateLimit';
 
@@ -161,6 +162,62 @@ describe('rateLimitResponse', () => {
     const res = rateLimitResponse({ ok: false, remaining: 0, resetInMs: 5000 });
     expect(res!.headers.get('Content-Type')).toBe('application/json');
     expect(res!.headers.get('X-RateLimit-Remaining')).toBe('0');
+  });
+});
+
+describe('guardRead', () => {
+  const req = (ip: string) =>
+    new Request('http://localhost', { headers: { 'x-forwarded-for': ip } });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('deja pasar el uso normal', () => {
+    expect(guardRead(req(`10.0.${seq}.1`), 'stats')).toBeNull();
+  });
+
+  it('deja pasar los primeros 60 requests del minuto', () => {
+    const ip = `10.1.${seq}.1`;
+    for (let i = 0; i < LIMITS.read.limit; i++) {
+      expect(guardRead(req(ip), 'stats'), `request ${i + 1}`).toBeNull();
+    }
+    expect(guardRead(req(ip), 'stats')).not.toBeNull();
+  });
+
+  it('el bucket es por endpoint: saturar uno no bloquea otro', () => {
+    const ip = `10.2.${seq}.1`;
+    for (let i = 0; i < LIMITS.read.limit; i++) guardRead(req(ip), 'duos');
+    expect(guardRead(req(ip), 'duos')).not.toBeNull();
+    expect(guardRead(req(ip), 'trios')).toBeNull();
+  });
+
+  it('el bucket es por IP: una IP no bloquea a otra', () => {
+    const mala = `10.3.${seq}.1`;
+    const buena = `10.4.${seq}.1`;
+    for (let i = 0; i < LIMITS.read.limit; i++) guardRead(req(mala), 'stats');
+    expect(guardRead(req(mala), 'stats')).not.toBeNull();
+    expect(guardRead(req(buena), 'stats')).toBeNull();
+  });
+
+  it('responde 429 con el mismo formato que el resto', async () => {
+    const ip = `10.5.${seq}.1`;
+    for (let i = 0; i < LIMITS.read.limit; i++) guardRead(req(ip), 'stats');
+    const res = guardRead(req(ip), 'stats');
+    expect(res!.status).toBe(429);
+    expect((await res!.json()).errorType).toBe('RATE_LIMITED');
+  });
+
+  it('se libera al cabo de la ventana', () => {
+    const ip = `10.6.${seq}.1`;
+    for (let i = 0; i < LIMITS.read.limit; i++) guardRead(req(ip), 'stats');
+    expect(guardRead(req(ip), 'stats')).not.toBeNull();
+    vi.advanceTimersByTime(LIMITS.read.windowMs + 1);
+    expect(guardRead(req(ip), 'stats')).toBeNull();
   });
 });
 

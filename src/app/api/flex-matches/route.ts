@@ -12,9 +12,13 @@ import {
   SquadMember,
   RegionalRouting,
 } from '@/lib/types';
+import { guardRead } from '@/lib/rateLimit';
 
 export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'flex-matches');
+  if (limited) return limited;
   const { searchParams } = new URL(req.url);
   const offset = Math.max(0, Number(searchParams.get('offset') || 0));
   const limit = Math.min(20, Math.max(1, Number(searchParams.get('limit') || 5)));

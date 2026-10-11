@@ -5,6 +5,7 @@ import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { RiotApiError, ErrorInfo, fromNetworkError } from '@/lib/errors';
 import { RankedStats, ChampionMastery, SquadMember } from '@/lib/types';
 import { getChampionInfo } from '@/lib/ddragon';
+import { guardRead } from '@/lib/rateLimit';
 
 export interface MemberResult {
   member: SquadMember;
@@ -28,8 +29,11 @@ function toErrorInfo(err: unknown): ErrorInfo {
   return fromNetworkError(err);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   await connection();
+
+  const limited = guardRead(req, 'stats');
+  if (limited) return limited;
   const members = await getSquadMembers();
   const client = new RiotApiClient();
 

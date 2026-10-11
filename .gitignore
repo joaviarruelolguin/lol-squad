@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# datos locales de la app (se crean solos si no existen).
+# squad.json y customs.json tienen datos reales de los invocadores: no van al repo.
+data/
+
 # vercel
 .vercel
 
