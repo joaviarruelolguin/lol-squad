@@ -3,6 +3,7 @@
 import { Sparkles, TrendingUp, RefreshCw, Users } from 'lucide-react';
 import { CompositionResult } from '@/lib/types';
 import { useCachedFetch } from '@/hooks/useCachedFetch';
+import { SkeletonCard, Skeleton } from './Skeleton';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
   <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
@@ -21,11 +22,26 @@ export default function CompositionPanel() {
     ttl: 10 * 60 * 1000,
   });
 
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 gap-3 text-slate-400">
-        <Spinner size="w-6 h-6" className="text-pink-400" />
-        <span className="text-sm">Analizando composiciones históricas...</span>
+      <div className="space-y-4" aria-busy="true" aria-label="Cargando composición">
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-56" />
+          <Skeleton className="h-3 w-80" />
+        </div>
+        <SkeletonCard lines={3} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-700/50 bg-slate-900/40"
+            >
+              <Skeleton className="w-6 h-6 rounded" />
+              <Skeleton className="h-3 flex-1" />
+              <Skeleton className="h-4 w-10" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

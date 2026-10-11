@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Clock, Plus, AlertCircle, Cpu, CircleCheck } from 'lucide-react';
 import { FlexMatch } from '@/lib/types';
 import LaneDiffPanel from './LaneDiffPanel';
+import { Skeleton } from './Skeleton';
 
 // Spinner reutilizable
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -302,8 +303,13 @@ export default function CoachIA({
         {matchPickerOpen && (
           <div className="absolute z-20 mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
             {flexMatches.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-slate-500">
-                No hay partidas cargadas
+              <div className="p-3 space-y-2" aria-busy="true" aria-label="Cargando partidas">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <Skeleton className="h-2 w-24" />
+                    <Skeleton className="h-3 w-full" />
+                  </div>
+                ))}
               </div>
             ) : (
               flexMatches.map((m) => (

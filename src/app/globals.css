@@ -36,6 +36,17 @@ body {
     Helvetica, Arial, sans-serif;
 }
 
+/* Animación shimmer para los skeletons de carga */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-\[shimmer_1\.6s_infinite\] {
+  animation: shimmer 1.6s infinite;
+}
+
 /* Scrollbar sutil estilo GitHub */
 ::-webkit-scrollbar {
   width: 10px;

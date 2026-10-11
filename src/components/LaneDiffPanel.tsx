@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 import { LaneDiffResult } from '@/lib/types';
+import { Skeleton } from './Skeleton';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
   <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
@@ -55,9 +56,42 @@ export default function LaneDiffPanel({ matchId }: { matchId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-4 text-slate-400 text-xs">
-        <Spinner size="w-4 h-4" />
-        Calculando diferenciales de línea...
+      <div
+        className="border-t border-slate-800 pt-4 mt-4 space-y-3"
+        aria-busy="true"
+        aria-label="Calculando diferenciales de línea"
+      >
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-3 w-44" />
+          <Skeleton className="h-5 w-20 rounded-md" />
+        </div>
+        {[10, 15].map((minute) => (
+          <div key={minute} className="bg-slate-900/50 border border-slate-800 rounded-lg p-2.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-2.5 w-20" />
+              <Skeleton className="h-2.5 w-28" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-2 w-6 shrink-0" />
+                <Skeleton className="h-3 flex-1 rounded-full" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-2 w-6 shrink-0" />
+                <Skeleton className="h-3 flex-1 rounded-full" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="px-1.5 py-1 rounded bg-slate-900/40 space-y-1">
+                  <Skeleton className="h-2 w-10" />
+                  <Skeleton className="h-2.5 w-8" />
+                </div>
+              ))}
+            </div>
+            <span className="sr-only">Calculando diferenciales del minuto {minute}</span>
+          </div>
+        ))}
       </div>
     );
   }

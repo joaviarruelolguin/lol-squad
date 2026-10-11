@@ -59,6 +59,7 @@ import CompositionPanel from '@/components/CompositionPanel';
 import TrioPanel from '@/components/TrioPanel';
 import TrendsPanel from '@/components/TrendsPanel';
 import WeeklyTab from '@/components/WeeklyTab';
+import { Skeleton } from '@/components/Skeleton';
 
 // Indicador de frescura de datos
 function FreshnessBadge({ fetchedAt, ttl }: { fetchedAt: number | null; ttl?: number }) {
@@ -940,10 +941,38 @@ export default function Home() {
                 </span>
               </div>
 
-              {loading ? (
-                <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
-                  <Spinner size="w-8 h-8" className="text-cyan-400" />
-                  <span className="text-sm">Trayendo datos de Riot...</span>
+              {loading && stats.length === 0 ? (
+                <div className="space-y-3" aria-busy="true" aria-label="Cargando tabla de posiciones">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4"
+                    >
+                      <div className="flex items-center gap-4">
+                        <Skeleton className="w-5 h-5" />
+                        <Skeleton className="w-12 h-12 rounded-xl" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-3 w-40" />
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <Skeleton className="h-6 w-24 rounded-md" />
+                          <Skeleton className="h-8 w-12" />
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-800/60 flex gap-3">
+                        {Array.from({ length: 3 }).map((__, j) => (
+                          <div key={j} className="flex items-center gap-2">
+                            <Skeleton className="w-7 h-7 rounded-md" />
+                            <div className="space-y-1">
+                              <Skeleton className="h-2.5 w-16" />
+                              <Skeleton className="h-2 w-12" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : stats.length === 0 ? (
                 <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">
@@ -1085,10 +1114,34 @@ export default function Home() {
               </div>
             )}
 
-            {loading ? (
-              <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
-                <Spinner size="w-8 h-8" className="text-pink-400" />
-                <span className="text-sm">Escaneando historial...</span>
+            {loading && !duoData ? (
+              <div className="space-y-4" aria-busy="true" aria-label="Cargando sinergias">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-64" />
+                  <Skeleton className="h-2.5 w-80" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="p-5 rounded-2xl border border-slate-800 bg-slate-900/40 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <Skeleton className="h-4 w-20 rounded-md" />
+                        <Skeleton className="h-3 w-16" />
+                      </div>
+                      <div className="space-y-2">
+                        <Skeleton className="h-3.5 w-3/4" />
+                        <Skeleton className="h-2 w-6 mx-auto" />
+                        <Skeleton className="h-3.5 w-3/4" />
+                      </div>
+                      <div className="border-t border-slate-800/80 pt-3 flex items-center justify-between">
+                        <Skeleton className="h-3 w-24" />
+                        <Skeleton className="h-6 w-14" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : duoData && duoData.duos.length === 0 ? (
               <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">
@@ -1207,10 +1260,42 @@ export default function Home() {
                 </button>
               </div>
 
-              {metricsLoading ? (
-                <div className="flex flex-col items-center justify-center p-8 text-slate-400 gap-3">
-                  <Spinner size="w-6 h-6" className="text-cyan-400" />
-                  <span className="text-sm">Calculando métricas...</span>
+              {metricsLoading && playerMetrics.length === 0 ? (
+                <div
+                  className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
+                  aria-busy="true"
+                  aria-label="Calculando métricas"
+                >
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 space-y-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="w-10 h-10 rounded-lg" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-3.5 w-28" />
+                          <Skeleton className="h-2.5 w-20" />
+                        </div>
+                        <Skeleton className="h-9 w-14" />
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {Array.from({ length: 4 }).map((__, j) => (
+                          <div key={j} className="space-y-1">
+                            <Skeleton className="h-3.5 w-full" />
+                            <Skeleton className="h-2 w-8 mx-auto" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-2.5 py-1.5">
+                        <Skeleton className="w-6 h-6 rounded" />
+                        <div className="flex-1 space-y-1.5">
+                          <Skeleton className="h-3 w-24" />
+                          <Skeleton className="h-2 w-20" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : metricsError ? (
                 <div className="bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2 text-rose-300 text-xs flex items-start gap-2">
@@ -1248,10 +1333,53 @@ export default function Home() {
               </div>
             )}
 
-            {flexStatus === 'idle' || flexLoading ? (
-              <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
-                <Spinner size="w-8 h-8" className="text-violet-400" />
-                <span className="text-sm">Buscando partidas Flex...</span>
+            {flexStatus === 'idle' || (flexLoading && flexMatches.length === 0) ? (
+              <div className="space-y-6" aria-busy="true" aria-label="Buscando partidas Flex">
+                {Array.from({ length: 2 }).map((_, mi) => (
+                  <div
+                    key={mi}
+                    className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden"
+                  >
+                    <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-4 w-4 rounded-full" />
+                        <Skeleton className="h-3.5 w-40" />
+                        <Skeleton className="h-3 w-16" />
+                      </div>
+                      <div className="flex gap-1.5">
+                        {Array.from({ length: 3 }).map((__, bi) => (
+                          <Skeleton key={bi} className="h-4 w-14 rounded-full" />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="px-4 py-2 border-b border-slate-800/60 flex gap-1.5">
+                      {Array.from({ length: 3 }).map((__, si) => (
+                        <Skeleton key={si} className="h-5 w-28 rounded-full" />
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">
+                      {[0, 1].map((ti) => (
+                        <div key={ti} className="rounded-xl border border-slate-800 p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Skeleton className="h-3 w-20" />
+                              <Skeleton className="h-4 w-14 rounded" />
+                            </div>
+                            <Skeleton className="h-3 w-16" />
+                          </div>
+                          {Array.from({ length: 5 }).map((__, pi) => (
+                            <div key={pi} className="flex items-center gap-2">
+                              <Skeleton className="w-7 h-7 rounded-md shrink-0" />
+                              <Skeleton className="h-3 flex-1" />
+                              <Skeleton className="h-3 w-12 shrink-0" />
+                              <Skeleton className="h-2 w-14 shrink-0" />
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : flexMatches.length === 0 ? (
               <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">

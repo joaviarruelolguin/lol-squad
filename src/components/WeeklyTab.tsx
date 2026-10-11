@@ -2,6 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { CalendarDays, Sparkles, RefreshCw, ChevronDown, Target, Trophy } from 'lucide-react';
+import {
+  Skeleton,
+  SkeletonText,
+  SkeletonCard,
+  SkeletonTable,
+} from './Skeleton';
 import { WeeklyPlayerStat, WeeklySummary } from '@/lib/types';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -145,10 +151,38 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
         </div>
       )}
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center p-12 gap-3 text-slate-400">
-          <Spinner size="w-8 h-8" className="text-violet-400" />
-          <span className="text-sm">Cargando estadísticas de la semana...</span>
+      {loading && !playerStats.length && !summaries.length ? (
+        <div className="space-y-4" aria-busy="true" aria-label="Cargando resumen semanal">
+          {/* Placeholder de un acordeón de resumen */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <div className="space-y-2">
+                <Skeleton className="h-3.5 w-48" />
+                <Skeleton className="h-2.5 w-32" />
+              </div>
+              <Skeleton className="h-4 w-4 rounded" />
+            </div>
+            <div className="px-4 pb-5 pt-4 space-y-5 border-t border-slate-800">
+              <div className="space-y-2">
+                <Skeleton className="h-2.5 w-40" />
+                <SkeletonText lines={4} />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-2.5 w-52" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <SkeletonCard key={i} avatar lines={3} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Placeholder de la tabla */}
+          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+            <Skeleton className="h-2.5 w-40 mb-3" />
+            <SkeletonTable rows={5} cols={7} />
+          </div>
         </div>
       ) : error ? (
         <div className="bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2 text-rose-300 text-xs">

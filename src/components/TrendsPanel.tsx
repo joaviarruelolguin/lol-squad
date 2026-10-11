@@ -3,6 +3,7 @@
 import { TrendingUp, Clock, CalendarDays, Skull, RefreshCw, AlertTriangle, Flame } from 'lucide-react';
 import { TrendResult, PlayerTrend } from '@/lib/types';
 import { useCachedFetch } from '@/hooks/useCachedFetch';
+import { SkeletonCard, Skeleton } from './Skeleton';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
   <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
@@ -21,11 +22,19 @@ export default function TrendsPanel() {
     ttl: 15 * 60 * 1000,
   });
 
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 gap-3 text-slate-400">
-        <Spinner size="w-6 h-6" className="text-cyan-400" />
-        <span className="text-sm">Analizando tendencias (esto puede tardar)...</span>
+      <div className="space-y-4" aria-busy="true" aria-label="Cargando tendencias">
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-44" />
+          <Skeleton className="h-3 w-80" />
+          <Skeleton className="h-2.5 w-64" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} avatar lines={5} />
+          ))}
+        </div>
       </div>
     );
   }

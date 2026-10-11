@@ -7,6 +7,11 @@ import {
 } from 'recharts';
 import { Trophy, Eye, Flame, Swords, Target } from 'lucide-react';
 import { PlayerStatsResult, PlayerMetrics } from '@/lib/types';
+import {
+  Skeleton,
+  SkeletonCard,
+  SkeletonBars,
+} from './Skeleton';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
   <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
@@ -115,6 +120,47 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
   }, {} as Record<string, import('@/lib/types').PlayerAward[]>) || {};
 
   const loadingAll = loading || metricsLoading;
+
+  // Primera carga: mostramos la estructura completa con skeletons para que la
+  // página no salte de tamaño cuando llegan los datos.
+  if (loadingAll && !stats && metrics.length === 0) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Cargando estadísticas">
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+          <Skeleton className="h-5 w-44 mb-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <SkeletonCard key={i} avatar lines={2} />
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+          <Skeleton className="h-5 w-48 mb-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-3"
+              >
+                <Skeleton className="h-3 w-28 mb-3" />
+                <SkeletonBars count={metrics.length || 4} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+          <Skeleton className="h-5 w-32 mb-4" />
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} lines={2} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
