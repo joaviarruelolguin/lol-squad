@@ -121,8 +121,9 @@ export default function CoachIA({
   const MODELS = [
     { id: '', label: 'Automático', desc: 'Fallback con reintentos' },
     { id: 'gemini-3.8-flash', label: 'Flash 3.8', desc: 'Rápido' },
-    { id: 'gemini-2.5-flash', label: 'Flash 2.5', desc: 'Estable' },
-    { id: 'gemini-2.0-flash', label: 'Flash 2.0', desc: 'Liviano' },
+    { id: 'gemini-3.7-flash', label: 'Flash 3.7', desc: 'Estable' },
+    { id: 'gemini-3.5-flash', label: 'Flash 3.5', desc: 'Liviano' },
+    { id: 'gemini-3-flash-preview', label: 'Flash 3 preview', desc: 'Preview' },
   ];
 
   // Cerrar dropdowns al clickear afuera

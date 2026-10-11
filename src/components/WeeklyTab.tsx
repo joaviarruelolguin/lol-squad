@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CalendarDays, Sparkles, RefreshCw, ChevronDown, Target, Trophy, Info } from 'lucide-react';
+import { CalendarDays, Sparkles, RefreshCw, ChevronDown, Target, Trophy } from 'lucide-react';
 import { WeeklyPlayerStat, WeeklySummary } from '@/lib/types';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -138,19 +138,6 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
           {generating ? 'Analizando...' : 'Generar resumen semanal'}
         </button>
       </div>
-
-      {/* Explicación de por qué no hay resúmenes aún */}
-      {summaries.length === 0 && playerStats.length > 0 && (
-        <div className="flex items-start gap-2 text-[10px] text-slate-500 bg-slate-900/30 border border-slate-800/60 rounded-lg px-3 py-2">
-          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          <span>
-            Los resúmenes se guardan en Supabase. Si el botón te dice que falta configuración,
-            revisá las variables <code className="text-slate-400">SUPABASE_URL</code> y{' '}
-            <code className="text-slate-400">SUPABASE_SERVICE_ROLE_KEY</code> en tu{' '}
-            <code className="text-slate-400">.env.local</code> o en Vercel.
-          </span>
-        </div>
-      )}
 
       {genError && (
         <div className="bg-amber-500/10 border border-amber-500/40 rounded-lg px-3 py-2.5 text-amber-300 text-xs">

@@ -46,8 +46,9 @@ const MODEL_FALLBACKS = [
   requestedModel,
   process.env.GEMINI_MODEL,
   'gemini-3.8-flash',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
+  'gemini-3.7-flash',
+  'gemini-3.5-flash',
+  'gemini-3-flash-preview',
 ].filter(Boolean) as string[];
 
 // Evitamos repetir el mismo modelo en la lista
@@ -160,8 +161,15 @@ Reglas:
         }
         lastError = msg;
 
-        // Si no es saturación (503/429/overloaded), no tiene sentido reintentar
-        if (aiRes.status !== 503 && aiRes.status !== 429) {
+        // 404 = modelo deprecado/no disponible → probamos el siguiente.
+        // 429/503 = saturación temporal → probamos el siguiente.
+        // Solo cortamos ante errores reales del cliente (400/401/403).
+        const retryable =
+          aiRes.status === 503 ||
+          aiRes.status === 429 ||
+          aiRes.status === 404;
+
+        if (!retryable) {
           return NextResponse.json(
             { error: msg, errorType: 'AI_ERROR' },
             { status: 502 }

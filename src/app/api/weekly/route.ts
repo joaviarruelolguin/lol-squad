@@ -274,9 +274,9 @@ FORMATO DE SALIDA (respondé SOLO con este JSON, sin texto extra):
 REGLAS:
 - Usá los nombres EXACTOS del jugador como aparecen en el contexto.
 - Solo un objeto en "improvements" por jugador, con 3 tips cada uno.
-- Tips ACCIONABLES y espec��ficos, basados en los números reales (ej: "tu vision promedio de 18 está bajo el promedio de la squad de 25, poné 1 ward más por oleada").
+- Tips ACCIONABLES y específicos, basados en los números reales (ej: "tu vision promedio de 18 está bajo el promedio de la squad de 25, poné 1 ward más por oleada").
 - Tono de coach amigable: motivador, nunca culpabilizador. Usá "pueden mejorar" no "les falta".
-- Si un jugador está muy bien,felicitá con un tip menor.
+- Si un jugador está muy bien, felicitá con un tip menor.
 - Respondé en español rioplatense, casual.
 - El JSON debe ser válido (comillas dobles, sin trailing commas).`;
 
@@ -284,14 +284,18 @@ REGLAS:
     const models = [
       process.env.GEMINI_MODEL,
       'gemini-3.8-flash',
-      'gemini-2.5-flash',
+      'gemini-3.7-flash',
+      'gemini-3.5-flash',
+      'gemini-3-flash-preview',
     ].filter(Boolean) as string[];
+
+    const UNIQUE = [...new Set(models)];
 
     let aiData: any = null;
     let usedModel = '';
     let lastErr = '';
 
-    for (const model of [...new Set(models)]) {
+    for (const model of UNIQUE) {
       try {
         const aiRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -316,17 +320,26 @@ REGLAS:
           break;
         }
         lastErr = await aiRes.text();
-        if (aiRes.status !== 503 && aiRes.status !== 429) break;
+        // 404 = modelo deprecado o no disponible para esta cuenta.
+        // 429/503 = saturación temporal.
+        // Ambos casos valen la pena probar con el siguiente modelo.
+        // Solo cortamos si es un error del cliente (400/401/403).
+        if (aiRes.status >= 400 && aiRes.status < 500 && aiRes.status !== 404 && aiRes.status !== 429) {
+          break;
+        }
       } catch (e: any) {
         lastErr = e?.message || 'Error de red';
       }
     }
 
     if (!aiData) {
+      const allUnavailable = UNIQUE.length > 0 && lastErr.includes('no longer available');
       return NextResponse.json(
         {
-          error: `Gemini está saturado ahora. Probá en un rato. (${lastErr.slice(0, 120)})`,
-          errorType: 'AI_OVERLOADED',
+          error: allUnavailable
+            ? 'Ninguno de los modelos configurados está disponible para esta API key. Revisá GEMINI_MODEL en las variables de entorno.'
+            : `Gemini está saturado ahora. Probá en un rato. (${lastErr.slice(0, 120)})`,
+          errorType: allUnavailable ? 'MODEL_UNAVAILABLE' : 'AI_OVERLOADED',
         },
         { status: 503 }
       );
