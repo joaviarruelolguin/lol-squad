@@ -1,4 +1,4 @@
-# Guía de uso — ZSUR LoL
+# Guía de uso — LoL Squad Stats
 
 Guía rápida para usar el dashboard. No hace falta saber nada técnico.
 

@@ -1,4 +1,4 @@
-# ZSUR LoL
+# LoL Squad Stats
 
 Dashboard de League of Legends para un grupo de amigos. ranks, sinergias, análisis de partidas Flex, premios y liga de customs. Todo con datos reales de la API de Riot — sin números inventados.
 
@@ -82,7 +82,7 @@ SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 # Personalización
-NEXT_PUBLIC_APP_TITLE=ZSUR LoL
+NEXT_PUBLIC_APP_TITLE=LoL Squad Stats
 NEXT_PUBLIC_APP_SUBTITLE=Datos reales de Riot. Sin inventos.
 NEXT_PUBLIC_APP_DESCRIPTION=Dashboard de LoL para tu squad
 ```

@@ -7,7 +7,7 @@
  */
 
 /** Nombre de la app. Aparecerá en el header, el título del navegador y el README. */
-export const APP_TITLE = process.env.NEXT_PUBLIC_APP_TITLE || 'ZSUR LoL';
+export const APP_TITLE = process.env.NEXT_PUBLIC_APP_TITLE || 'LoL Squad Stats';
 
 /** Subtítulo bajo el título en el header. */
 export const APP_SUBTITLE =
