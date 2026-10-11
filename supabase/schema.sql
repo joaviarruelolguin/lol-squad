@@ -89,5 +89,18 @@ create trigger trg_chat_limit
   after insert on public.ai_chats
   for each row execute function enforce_chat_limit();
 
+-- Resúmenes semanales generados por IA
+create table if not exists public.weekly_summaries (
+  id text primary key,
+  week_start timestamptz not null,
+  week_end timestamptz not null,
+  matches_analyzed int default 0,
+  squad_winrate int default 0,
+  highlights text,
+  improvements jsonb,
+  model text,
+  created_at timestamptz default now()
+);
+
 -- (Opcional) RLS: dejamos las tablas accesibles desde el servidor.
 -- Como usamos la service role key en el backend, no hace falta habilitar RLS.

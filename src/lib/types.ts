@@ -319,3 +319,37 @@ export interface CompositionResult {
   scannedMatches: number;
 }
 
+// ---------- Resumen semanal automático ----------
+export interface WeeklyPlayerStat {
+  memberId: string;
+  gameName: string;
+  nickname: string;
+  profileIconId: number;
+  games: number;
+  wins: number;
+  losses: number;
+  winrate: number;
+  avgKills: number;
+  avgDeaths: number;
+  avgAssists: number;
+  avgKDA: number;
+  avgDamage: number;
+  avgVision: number;
+  avgCS: number;
+  avgGold: number;
+  wardsPlaced: number;
+  wardsKilled: number;
+}
+
+export interface WeeklySummary {
+  id: string;
+  week_start: string;
+  week_end: string;
+  matches_analyzed: number;
+  squad_winrate: number;
+  highlights: string;      // texto generado por la IA
+  improvements: string;    // JSON array de { memberId, tips: string[] }
+  created_at: string;
+  model?: string;
+}
+

@@ -34,6 +34,7 @@ import {
   XCircle,
   CircleCheck,
   BarChart3,
+  CalendarDays,
 } from 'lucide-react';
 import {
   MemberResult,
@@ -53,6 +54,7 @@ import CoachIA from '@/components/CoachIA';
 import PlayerMetricsCard from '@/components/PlayerMetricsCard';
 import StatsTab from '@/components/StatsTab';
 import CompositionPanel from '@/components/CompositionPanel';
+import WeeklyTab from '@/components/WeeklyTab';
 
 // Spinner reutilizable
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -91,7 +93,7 @@ export default function Home() {
   const [chatExpanded, setChatExpanded] = useState(true);
   const [matchPickerOpen, setMatchPickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'squad' | 'duos' | 'flex' | 'stats' | 'customs'>('squad');
+  const [activeTab, setActiveTab] = useState<'squad' | 'duos' | 'flex' | 'stats' | 'weekly' | 'customs'>('squad');
   const [cacheSize, setCacheSize] = useState<number | null>(null);
   const [forceRefreshing, setForceRefreshing] = useState(false);
 
@@ -789,6 +791,17 @@ export default function Home() {
             Stats
           </button>
           <button
+            onClick={() => setActiveTab('weekly')}
+            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
+              activeTab === 'weekly'
+                ? 'border-violet-500 text-violet-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            Semanal
+          </button>
+          <button
             onClick={() => setActiveTab('customs')}
             className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
               activeTab === 'customs'
@@ -1199,6 +1212,30 @@ export default function Home() {
               }))}
               metrics={playerMetrics}
               metricsLoading={metricsLoading}
+            />
+          </div>
+        )}
+
+        {/* TAB: SEMANAL */}
+        {activeTab === 'weekly' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <CalendarDays className="w-5 h-5 text-violet-400" />
+                Resumen Semanal con IA
+              </h2>
+              <p className="text-sm text-slate-400">
+                Análisis automático de las últimas semanas: récords, tendencias y 3 cosas para mejorar por jugador.
+              </p>
+            </div>
+
+            <WeeklyTab
+              members={stats.map((s) => ({
+                id: s.member.id,
+                gameName: s.member.gameName,
+                nickname: s.member.nickname,
+                profileIconId: s.member.profileIconId || 29,
+              }))}
             />
           </div>
         )}
