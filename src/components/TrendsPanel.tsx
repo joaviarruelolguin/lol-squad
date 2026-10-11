@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { TrendingUp, Clock, CalendarDays, Skull, RefreshCw, AlertTriangle, Flame, Bot } from 'lucide-react';
+import { TrendingUp, Clock, CalendarDays, Skull, RefreshCw, AlertTriangle, Flame } from 'lucide-react';
 import { TrendResult, PlayerTrend } from '@/lib/types';
+import { useCachedFetch } from '@/hooks/useCachedFetch';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
   <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
@@ -12,24 +12,14 @@ const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; classNam
 );
 
 export default function TrendsPanel() {
-  const [data, setData] = useState<TrendResult | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/trends').then((r) => r.json());
-      setData(res);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
+  const {
+    data,
+    loading,
+    refresh: load,
+  } = useCachedFetch<TrendResult>('/api/trends', {
+    key: 'trends',
+    ttl: 15 * 60 * 1000,
+  });
 
   if (loading) {
     return (

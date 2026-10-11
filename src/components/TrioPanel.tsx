@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Users, RefreshCw, Crown, AlertTriangle, Clock } from 'lucide-react';
+import { useState } from 'react';
+import { Users, RefreshCw, AlertTriangle, Clock } from 'lucide-react';
 import { TrioResult, TrioStat } from '@/lib/types';
+import { useCachedFetch } from '@/hooks/useCachedFetch';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
   <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
@@ -44,27 +45,15 @@ const RATING_STYLE: Record<TrioStat['synergyRating'], {
 };
 
 export default function TrioPanel() {
-  const [data, setData] = useState<TrioResult | null>(null);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'GOD_TIER' | 'REGULAR' | 'FRIA' | 'A_PULIR'>('all');
 
-  const load = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/trios').then((r) => r.json());
-      setData(res);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data,
+    loading,
+    refresh: load,
+  } = useCachedFetch<TrioResult>('/api/trios', { key: 'trios', ttl: 10 * 60 * 1000 });
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="flex flex-col items-center justify-center p-8 gap-3 text-slate-400">
         <Spinner size="w-6 h-6" className="text-pink-400" />

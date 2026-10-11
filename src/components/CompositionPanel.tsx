@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Sparkles, TrendingUp, RefreshCw, Users } from 'lucide-react';
 import { CompositionResult } from '@/lib/types';
+import { useCachedFetch } from '@/hooks/useCachedFetch';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
   <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
@@ -12,24 +12,14 @@ const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; classNam
 );
 
 export default function CompositionPanel() {
-  const [data, setData] = useState<CompositionResult | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/composition').then((r) => r.json());
-      setData(res);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
+  const {
+    data,
+    loading,
+    refresh: load,
+  } = useCachedFetch<CompositionResult>('/api/composition', {
+    key: 'composition',
+    ttl: 10 * 60 * 1000,
+  });
 
   if (loading) {
     return (
@@ -112,10 +102,13 @@ export default function CompositionPanel() {
 
       {/* Mejores duos */}
       <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
-        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-3 flex items-center gap-1.5">
+        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1 flex items-center gap-1.5">
           <TrendingUp className="w-3.5 h-3.5" />
-          Mejores duos (combinaciones de 2)
+          Combos de campeones (pares)
         </div>
+        <p className="text-[10px] text-slate-500 mb-3">
+          Ordenado por confianza (más partidas primero). Un 100% en 2 partidas no dice nada.
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {duos.slice(0, 12).map((c, i) => (
             <div
@@ -159,9 +152,12 @@ export default function CompositionPanel() {
       {/* Winrate por rol (posición real) */}
       {data.roleFills.length > 0 && (
         <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-3">
-            Winrate por posición
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">
+            Winrate de la squad por posición
           </div>
+          <p className="text-[10px] text-slate-500 mb-3">
+            Todas las partidas de la squad agrupadas por posición. No es por jugador.
+          </p>
           <div className="space-y-1.5">
             {data.roleFills.map((r) => (
               <div key={r.role} className="flex items-center gap-2">

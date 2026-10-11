@@ -331,14 +331,18 @@ export default function CoachIA({
         )}
       </div>
 
-      {/* Diferenciales de línea de la partida seleccionada */}
-      {aiMatchId && <LaneDiffPanel matchId={aiMatchId} />}
+      {/* Diferenciales de línea (se comprime junto con el chat) */}
+      {aiMatchId && chatExpanded && (
+        <div className="mt-4">
+          <LaneDiffPanel matchId={aiMatchId} />
+        </div>
+      )}
 
       {chatExpanded && (
         <>
           {/* Mensajes del chat */}
           {aiHistory.length > 0 && (
-            <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
+            <div className="space-y-2 max-h-64 overflow-y-auto mt-4 mb-3">
               {aiHistory.map((h, i) => (
                 <div
                   key={i}

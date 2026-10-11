@@ -201,23 +201,28 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
             Tilt Meter
           </h3>
           <p className="text-xs text-slate-400 mb-4">
-            ¿Rindes igual después de una derrota?
+            ¿Rindes igual después de una derrota? Verde = después de <b className="text-emerald-400">ganar</b>, Rojo = después de <b className="text-red-400">perder</b>.
           </p>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={tiltData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#30363d" vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: '#8b949e', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#8b949e', fontSize: 11 }} domain={[0, 100]} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: '8px', fontSize: 12 }}
-                  labelStyle={{ color: '#e6edf3' }}
-                  formatter={(v: any) => [`${v}%`]}
-                />
-                <Bar dataKey="Después de victoria" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Después de derrota" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="space-y-2.5 mb-3">
+            {tiltData.map((row, i) => {
+              const w = row['Después de victoria'];
+              const l = row['Después de derrota'];
+              const gap = w != null && l != null ? w - l : null;
+              return (
+                <div key={i} className="bg-slate-800/40 border border-slate-700/40 rounded-lg p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-semibold text-slate-200">{row.name}</span>
+                    {gap != null && (
+                      <span className={`text-[9px] font-bold ${gap >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        gap {gap >= 0 ? '+' : ''}{gap}pp
+                      </span>
+                    )}
+                  </div>
+                  <TiltBar label="ganar" val={w} cls="bg-emerald-500" />
+                  <TiltBar label="perder" val={l} cls="bg-rose-500" />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -227,6 +232,23 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
           {error}
         </div>
       )}
+    </div>
+  );
+}
+
+// Barra horizontal simple para el tilt meter (más legible que un BarChart)
+function TiltBar({ label, val, cls }: { label: string; val: number | null; cls: string }) {
+  return (
+    <div className="flex items-center gap-1.5 mt-0.5">
+      <span className="text-[9px] text-slate-500 w-10 shrink-0">{label}</span>
+      <div className="flex-1 h-2.5 bg-slate-900/60 rounded-full overflow-hidden">
+        {val != null && (
+          <div className={`h-full ${cls} rounded-full transition-all`} style={{ width: `${val}%` }} />
+        )}
+      </div>
+      <span className="text-[9px] font-mono text-slate-400 w-8 text-right shrink-0">
+        {val != null ? `${val}%` : '—'}
+      </span>
     </div>
   );
 }

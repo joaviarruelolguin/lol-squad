@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { APP_TITLE, APP_DESCRIPTION } from "@/lib/config";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LOL Squad",
-  description: "Dashboard de League of Legends para tu squad: ranks, sinergias, análisis de Flex y liga de customs.",
+  title: APP_TITLE,
+  description: APP_DESCRIPTION,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

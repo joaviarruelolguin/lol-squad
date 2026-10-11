@@ -149,9 +149,10 @@ export async function GET(req: Request) {
       winrate: Math.round((data.wins / data.games) * 100),
     });
   }
-  // Ordenar: tríos primero (más relevantes), luego por winrate
+  // Ordenar por confianza: primero los combos con más partidas,
+// después por winrate. Un 100% en 2 partidas no es confiable.
   champCombos.sort((a, b) => {
-    if (a.size !== b.size) return b.size - a.size;
+    if (b.games !== a.games) return b.games - a.games;
     return b.winrate - a.winrate;
   });
 

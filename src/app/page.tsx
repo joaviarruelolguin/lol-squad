@@ -50,6 +50,8 @@ import {
   PlayerMetricsResult,
 } from '@/lib/types';
 import type { ErrorInfo } from '@/lib/errors';
+import { APP_TITLE, APP_SUBTITLE } from '@/lib/config';
+import { clearAllFetchCache } from '@/hooks/useCachedFetch';
 import CoachIA from '@/components/CoachIA';
 import PlayerMetricsCard from '@/components/PlayerMetricsCard';
 import StatsTab from '@/components/StatsTab';
@@ -346,8 +348,14 @@ export default function Home() {
   const handleForceRefresh = async () => {
     try {
       setForceRefreshing(true);
+      // Limpiamos la caché de fetch del cliente para forrar todo
+      clearAllFetchCache();
+      // Limpiamos la caché de Riot en el servidor
       await fetch('/api/cache', { method: 'DELETE' }).catch(() => {});
       await fetchData();
+      await loadFlex(0, false);
+      await loadMetrics();
+      await loadChatHistory();
     } catch (err) {
       console.error(err);
     } finally {
@@ -694,9 +702,9 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-100">
-                ZSUR LoL
+                {APP_TITLE}
               </h1>
-              <p className="text-xs text-slate-400 font-mono hidden sm:inline">Datos reales de Riot. Sin inventos.</p>
+              <p className="text-xs text-slate-400 font-mono hidden sm:inline">{APP_SUBTITLE}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -712,7 +720,7 @@ export default function Home() {
             <button
               onClick={() => fetchData()}
               className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1.5 text-sm disabled:opacity-50"
-              title="Refrescar datos"
+              title="Volver a leer los datos desde el caché de la app (rápido). No consulta a Riot de nuevo."
               disabled={loading}
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -721,7 +729,7 @@ export default function Home() {
             <button
               onClick={handleForceRefresh}
               className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition flex items-center gap-1.5 text-sm disabled:opacity-50"
-              title="Limpiar caché de Riot y traer datos frescos"
+              title="Limpia TODAS las cachés (incluida la de Riot) y vuelve a pedir todo desde cero. Lento y consume rate limit."
               disabled={forceRefreshing}
             >
               <Zap className={`w-4 h-4 ${forceRefreshing ? 'animate-pulse' : ''}`} />
