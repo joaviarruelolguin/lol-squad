@@ -3,6 +3,7 @@ import { connection } from 'next/server';
 import { RiotApiClient } from '@/lib/riot';
 import { RiotApiError, ErrorInfo } from '@/lib/errors';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getSquadMembers } from '@/lib/storage';
 import { routingFromMatchId } from '@/app/api/flex-matches/route';
 
 export async function POST(req: Request) {
@@ -52,8 +53,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Partida sin datos válidos.' }, { status: 400 });
     }
 
-    // 2. Construir el contexto compacto de la partida
-    const context = buildMatchContext(info);
+    // 2. Obtener miembros de la squad para identificar aliados
+    const squadMembers = await getSquadMembers();
+    const squadPuuids = new Set(
+      squadMembers.filter((m) => m.puuid).map((m) => m.puuid as string)
+    );
+    const puuidToName = new Map(
+      squadMembers
+        .filter((m) => m.puuid)
+        .map((m) => [m.puuid as string, m.gameName])
+    );
+
+    // 3. Construir el contexto compacto de la partida
+    const context = buildMatchContext(info, squadPuuids, puuidToName);
 
     // 3. Armar el historial de conversación para Gemini
     const contents = [
@@ -75,8 +87,16 @@ export async function POST(req: Request) {
       { role: 'user', parts: [{ text: String(message) }] },
     ];
 
-    const systemPrompt = `Sos un coach de League of Legends especializado en partidas Flex (Ranked Flex 5v5) de un grupo de amigos. 
+    const systemPrompt = `Sos un coach de League of Legends especializado en partidas Flex (Ranked Flex 5v5) de un grupo de amigos.
 Tu tarea: analizar la partida con datos reales (KDA, daño, visión, campeones), dar resúmenes claros, detectar puntos a mejorar y dar tips concretos y accionables.
+
+REGLA CRÍTICA - ALIADOS vs RIVALES:
+- En el contexto, los jugadores marcados como [ALIADO] son LOS AMIGOS del usuario (su squad). Los marca con [RIVAL] son los enemigos.
+- Analizá principalmente el desempeño de los [ALIADOS]: son a quienes hay que ayudar a mejorar.
+- NUNCA critiques a un [RIVAL] ni te enfoques en ellos. El foco es el equipo del usuario.
+- Cuando el usuario pregunte por "bigJoa0" o cualquier aliado, respondé con datos de ese jugador.
+- Si un aliado tuvo un mal juego, sé constructivo: "puede mejorar X", no "jugó horrible".
+
 Reglas:
 - Tono constructivo y amigable: nunca defenestres ni insultes a nadie. Usá frases como "pueden mejorar X" en lugar de "jugó horrible".
 - Apoyate SÓLO en los datos del contexto. No inventes estadísticas.
@@ -152,7 +172,11 @@ Reglas:
   }
 }
 
-function buildMatchContext(info: any): string {
+function buildMatchContext(
+  info: any,
+  squadPuuids?: Set<string>,
+  puuidToName?: Map<string, string>
+): string {
   const date = new Date(info.gameCreation).toLocaleString('es-AR');
   const durationMin = Math.floor((info.gameDuration || 0) / 60);
 
@@ -168,20 +192,34 @@ function buildMatchContext(info: any): string {
     return { teamId, win, players, totalDamage };
   });
 
+  // Determinar qué equipo tiene más aliados (el equipo del usuario)
+  const teamAllyCount = teams.map((t) =>
+    t.players.filter((p: any) => squadPuuids?.has(p.puuid)).length
+  );
+  const userTeam = teamAllyCount[0] >= teamAllyCount[1] ? 0 : 1;
+
   const lines: string[] = [];
   lines.push(`Fecha: ${date}`);
   lines.push(`Duración: ${durationMin} minutos`);
   lines.push(`Versión: ${info.gameVersion || 'desconocida'}`);
   lines.push('');
 
-  for (const team of teams) {
+  for (let ti = 0; ti < teams.length; ti++) {
+    const team = teams[ti];
+    const isUserTeam = ti === userTeam;
+    const teamLabel = isUserTeam ? 'NUESTRO EQUIPO' : 'EQUIPO RIVAL';
     lines.push(
-      `Equipo ${team.teamId === 100 ? 'A' : 'B'} (${team.win ? 'VICTORIA' : 'DERROTA'}) - Daño total: ${(team.totalDamage / 1000).toFixed(1)}k`
+      `${teamLabel} (Equipo ${team.teamId === 100 ? 'A' : 'B'}) - ${team.win ? 'VICTORIA' : 'DERROTA'} - Daño total: ${(team.totalDamage / 1000).toFixed(1)}k`
     );
     for (const p of team.players) {
+      const isAlly = squadPuuids?.has(p.puuid);
+      const tag = isAlly ? '[ALIADO]' : '[RIVAL]';
+      const allyName = isAlly && puuidToName?.get(p.puuid)
+        ? ` (${puuidToName.get(p.puuid)})`
+        : '';
       const cs = (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
       lines.push(
-        `  - ${p.riotIdGameName}: ${p.championName} (${p.lane}) | K/D/A ${p.kills}/${p.deaths}/${p.assists} | Daño ${(p.totalDamageDealtToChampions / 1000).toFixed(1)}k | Visión ${p.visionScore} | CS ${cs} | Oro ${(p.goldEarned / 1000).toFixed(1)}k`
+        `  - ${tag} ${p.riotIdGameName}${allyName}: ${p.championName} (${p.lane}) | K/D/A ${p.kills}/${p.deaths}/${p.assists} | Daño ${(p.totalDamageDealtToChampions / 1000).toFixed(1)}k | Visión ${p.visionScore} | CS ${cs} | Oro ${(p.goldEarned / 1000).toFixed(1)}k`
       );
     }
     lines.push('');

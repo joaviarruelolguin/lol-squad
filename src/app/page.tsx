@@ -259,6 +259,19 @@ export default function Home() {
     setChatHistoryOpen(false);
   };
 
+  const handleLoadChat = (
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    matchId: string
+  ) => {
+    const newHistory = [...messages] as any;
+    // Preserve _chatId from the loaded messages if present
+    setAiHistory(newHistory);
+    setAiMatchId(matchId);
+    setAiReply(null);
+    setAiMessage('');
+    setAiError(null);
+  };
+
   // ---------- API Key de Riot ----------
   const fetchRiotKeyMeta = async () => {
     try {
@@ -715,50 +728,50 @@ export default function Home() {
 
       {/* NAV TABS */}
       <div className="border-b border-slate-800/80 bg-slate-900/20">
-        <div className="max-w-7xl mx-auto px-4 flex gap-6 overflow-x-auto flex-nowrap">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 flex gap-2 sm:gap-6 overflow-x-auto flex-nowrap">
           <button
             onClick={() => setActiveTab('squad')}
-            className={`py-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition ${
+            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
               activeTab === 'squad'
                 ? 'border-cyan-500 text-cyan-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Trophy className="w-4 h-4" />
-            Ranking Squad
+            <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            Ranking
           </button>
           <button
             onClick={() => setActiveTab('flex')}
-            className={`py-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition ${
+            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
               activeTab === 'flex'
                 ? 'border-violet-500 text-violet-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Gamepad2 className="w-4 h-4" />
-            Análisis de Flex
+            <Gamepad2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            Flex
           </button>
           <button
             onClick={() => setActiveTab('duos')}
-            className={`py-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition ${
+            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
               activeTab === 'duos'
                 ? 'border-pink-500 text-pink-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Flame className="w-4 h-4" />
-            Sinergia (Duo/Stack)
+            <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            Sinergia
           </button>
           <button
             onClick={() => setActiveTab('customs')}
-            className={`py-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition ${
+            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
               activeTab === 'customs'
                 ? 'border-indigo-500 text-indigo-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Crown className="w-4 h-4" />
-            Liga de Customs
+            <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            Customs
           </button>
         </div>
       </div>
@@ -1007,6 +1020,7 @@ export default function Home() {
               handleNewChat={handleNewChat}
               loadChatHistory={loadChatHistory}
               formatFlexDate={formatFlexDate}
+              onLoadChat={handleLoadChat}
             />
 
             {/* MÉTRICAS AGREGADAS POR JUGADOR */}
@@ -1615,41 +1629,41 @@ function FlexPlayerRow({
 
   return (
     <div
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
+      className={`flex items-center gap-1.5 sm:gap-3 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg ${
         isSquad ? 'bg-violet-500/10 border border-violet-500/30' : 'bg-slate-800/30'
       }`}
     >
       <img
         src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${player.championName}.png`}
         alt={player.championName}
-        className="w-8 h-8 rounded-md object-cover"
+        className="w-7 h-7 sm:w-8 sm:h-8 rounded-md object-cover shrink-0"
         onError={(e) => {
           (e.target as HTMLImageElement).style.display = 'none';
         }}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <span
-            className={`text-sm font-semibold truncate ${
+            className={`text-xs sm:text-sm font-semibold truncate ${
               isSquad ? 'text-violet-200' : 'text-slate-300'
             }`}
           >
             {player.riotIdGameName}
           </span>
           {player.squadNickname && (
-            <span className="text-[10px] font-semibold text-pink-400 italic truncate">
+            <span className="text-[9px] sm:text-[10px] font-semibold text-pink-400 italic truncate hidden sm:inline">
               "{player.squadNickname}"
             </span>
           )}
         </div>
-        <div className="text-[10px] text-slate-500 font-mono">
+        <div className="text-[9px] sm:text-[10px] text-slate-500 font-mono truncate">
           {player.championName} · {player.lane}
         </div>
       </div>
 
-      <div className="text-right">
+      <div className="text-right shrink-0">
         <div
-          className={`text-sm font-bold font-mono ${
+          className={`text-xs sm:text-sm font-bold font-mono ${
             player.deaths >= 6
               ? 'text-rose-400'
               : player.kills === 0 && player.deaths >= 4
@@ -1659,14 +1673,14 @@ function FlexPlayerRow({
         >
           {kda}
         </div>
-        <div className="text-[10px] text-slate-500">K/D/A</div>
+        <div className="text-[9px] sm:text-[10px] text-slate-500">KDA</div>
       </div>
 
-      <div className="w-28">
-        <div className="text-xs font-mono text-cyan-300 text-right">
+      <div className="w-16 sm:w-28 shrink-0">
+        <div className="text-[10px] sm:text-xs font-mono text-cyan-300 text-right">
           {fmtDmg(player.totalDamageDealtToChampions)}
         </div>
-        <div className="h-1.5 bg-slate-800 rounded-full mt-1 overflow-hidden">
+        <div className="h-1 sm:h-1.5 bg-slate-800 rounded-full mt-1 overflow-hidden">
           <div
             className="h-full bg-cyan-500 rounded-full"
             style={{ width: `${Math.max(2, dmgShare)}%` }}
@@ -1674,9 +1688,9 @@ function FlexPlayerRow({
         </div>
       </div>
 
-      <div className="text-right w-12">
-        <div className="text-xs font-mono text-slate-300">{player.visionScore}</div>
-        <div className="text-[10px] text-slate-500">visión</div>
+      <div className="text-right w-8 sm:w-12 shrink-0">
+        <div className="text-[10px] sm:text-xs font-mono text-slate-300">{player.visionScore}</div>
+        <div className="text-[9px] sm:text-[10px] text-slate-500">vis</div>
       </div>
     </div>
   );
@@ -1695,31 +1709,31 @@ function FlexMatchCard({ match }: { match: FlexMatch }) {
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Calendar className="w-4 h-4 text-slate-500" />
-          <span className="text-sm text-slate-300 font-mono">
+      <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500" />
+          <span className="text-xs sm:text-sm text-slate-300 font-mono">
             {formatFlexDate(match.date)}
           </span>
-          <span className="flex items-center gap-1 text-xs text-slate-500 font-mono">
-            <Clock className="w-3.5 h-3.5" />
+          <span className="flex items-center gap-1 text-[10px] sm:text-xs text-slate-500 font-mono">
+            <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             {formatDuration(match.duration)}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono bg-slate-800 text-slate-400 px-2 py-1 rounded-full border border-slate-700">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <span className="text-[9px] sm:text-[10px] font-mono bg-slate-800 text-slate-400 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-slate-700">
             v{match.gameVersion.split('.')[0]}.{match.gameVersion.split('.')[1]}
           </span>
-          <span className="text-[10px] font-mono bg-violet-500/10 text-violet-300 px-2 py-1 rounded-full border border-violet-500/30">
+          <span className="text-[9px] sm:text-[10px] font-mono bg-violet-500/10 text-violet-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-violet-500/30">
             {match.squadMemberCount} de la squad
           </span>
           {squadWins > 0 && (
-            <span className="text-[10px] font-mono bg-emerald-500/10 text-emerald-300 px-2 py-1 rounded-full border border-emerald-500/30">
+            <span className="text-[9px] sm:text-[10px] font-mono bg-emerald-500/10 text-emerald-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-emerald-500/30">
               {squadWins}V
             </span>
           )}
           {squadLosses > 0 && (
-            <span className="text-[10px] font-mono bg-rose-500/10 text-rose-300 px-2 py-1 rounded-full border border-rose-500/30">
+            <span className="text-[9px] sm:text-[10px] font-mono bg-rose-500/10 text-rose-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-rose-500/30">
               {squadLosses}D
             </span>
           )}
@@ -1744,23 +1758,23 @@ function FlexMatchCard({ match }: { match: FlexMatch }) {
       </div>
 
       {/* Equipos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 p-2 sm:p-4">
         {match.teams.map((team) => (
           <div
             key={team.teamId}
-            className={`rounded-xl border p-3 space-y-2 ${
+            className={`rounded-xl border p-2 sm:p-3 space-y-1.5 sm:space-y-2 ${
               team.win
                 ? 'bg-emerald-500/5 border-emerald-500/20'
                 : 'bg-rose-500/5 border-rose-500/20'
             }`}
           >
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400">
+            <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="text-[10px] sm:text-xs font-bold text-slate-400">
                   Equipo {team.teamId === 100 ? 'A' : 'B'}
                 </span>
                 <span
-                  className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
+                  className={`text-[9px] sm:text-[10px] font-black uppercase px-1 sm:px-1.5 py-0.5 rounded ${
                     team.win
                       ? 'bg-emerald-500/20 text-emerald-300'
                       : 'bg-rose-500/20 text-rose-300'
@@ -1769,7 +1783,7 @@ function FlexMatchCard({ match }: { match: FlexMatch }) {
                   {team.win ? 'Victoria' : 'Derrota'}
                 </span>
               </div>
-              <span className="text-xs font-mono text-cyan-300">
+              <span className="text-[10px] sm:text-xs font-mono text-cyan-300">
                 Daño: {fmtDmg(team.totalDamage)}
               </span>
             </div>
@@ -1785,21 +1799,21 @@ function FlexMatchCard({ match }: { match: FlexMatch }) {
 
       {/* Puntos débiles */}
       {match.weakPoints.length > 0 && (
-        <div className="px-4 pb-4">
-          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-2 flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5" />
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+          <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5 sm:mb-2 flex items-center gap-1.5">
+            <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             Puntos débiles de la partida
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
             {match.weakPoints.map((wp, i) => (
               <div
                 key={i}
-                className="flex items-start gap-2 bg-slate-800/40 border border-slate-700/50 rounded-lg px-3 py-2"
+                className="flex items-start gap-1.5 sm:gap-2 bg-slate-800/40 border border-slate-700/50 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
               >
                 <WeakPointIcon type={wp.type} />
-                <div>
-                  <div className="text-xs font-bold text-slate-200">{wp.title}</div>
-                  <div className="text-[11px] text-slate-400">{wp.detail}</div>
+                <div className="min-w-0">
+                  <div className="text-[10px] sm:text-xs font-bold text-slate-200">{wp.title}</div>
+                  <div className="text-[9px] sm:text-[11px] text-slate-400">{wp.detail}</div>
                 </div>
               </div>
             ))}
