@@ -17,3 +17,8 @@ export const APP_SUBTITLE =
 export const APP_DESCRIPTION =
   process.env.NEXT_PUBLIC_APP_DESCRIPTION ||
   'Dashboard de League of Legends para tu squad: ranks Flex, sinergias, análisis de partidas, premios y liga de customs.';
+
+/** Link al código fuente. Aparece en el footer. Vaciarlo ('') lo oculta. */
+export const APP_REPO_URL =
+  process.env.NEXT_PUBLIC_APP_REPO_URL ||
+  'https://github.com/joaviarruelolguin/lol-squad';

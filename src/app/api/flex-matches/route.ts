@@ -12,6 +12,7 @@ import {
   SquadMember,
   RegionalRouting,
 } from '@/lib/types';
+import { getMatchesWithCache } from '@/lib/matchCache';
 import { guardRead } from '@/lib/rateLimit';
 
 export async function GET(req: Request) {
@@ -88,10 +89,13 @@ export async function GET(req: Request) {
 
   const matches: FlexMatch[] = [];
 
-  for (const matchId of pageIds) {
+  // Detalles de la página en un lote: los que ya están en match_cache no
+  // tocan Riot, y los que faltan van con concurrencia acotada en vez de
+  // uno por uno (que a 2 req/s convertía cada página en ~5 segundos).
+  const details = await getMatchesWithCache(pageIds, defaultRouting);
+
+  for (const { matchId, info } of details) {
     try {
-      const detail = await client.getMatchDetail(matchId, defaultRouting);
-      const info = detail?.info;
       if (!info || !Array.isArray(info.participants)) continue;
 
       const players: FlexPlayer[] = info.participants.map((p: any) => {

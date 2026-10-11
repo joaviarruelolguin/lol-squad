@@ -141,15 +141,27 @@ Cada seccion tiene su propio boton de actualizar si necesitás solo recargar esa
 
 ## Tips
 
-**Los datos tardan un poco la primera vez.** La app baja las partidas de Riot y las guarda en la base. Después es instantáneo.
+**Los datos tardan un poco la primera vez.** Riot deja hacer solo 2 consultas por segundo, y la app necesita unas 40 partidas para armar las estadísticas. La primera carga puede tardar medio minuto; las siguientes son instantáneas.
+
+Es normal y no es un error. Si esperaste 5 minutos y sigue cargando, recargá la página.
+
+**Cada cuánto se actualiza.**
+- Mientras la app está abierta: cada 5 minutos (es lo que dura la caché)
+- Después de reiniciarse el servidor o la app: vuelve a bajar todo de Riot
+- Con el almacenamiento en la nube configurado: las partidas quedan guardadas y no se vuelven a bajar nunca
 
 **Si ves "rate limit"**, estás pidiendo demasiadas cosas seguidas. Esperá unos segundos o usá "Forzar" en vez de "Actualizar" repetidamente.
 
 **La API key vence cada 24h.** No es un bug, es la política de Riot para keys de desarrollo. Cuando el badge se pone rojo, cambiala.
 
+**No toques "Forzar" por costumbre.** Es la única forma de gastar cuota de la API de Riot de verdad. Para refrescar de todos modos alcanza con **Actualizar**.
+
 ---
 
 ## Preguntas frecuentes
+
+**¿Por qué la primera vez tarda tanto?**
+Porque Riot limita a 2 consultas por segundo y hay que traer ~40 partidas. Después de eso quedan cacheadas. No hay forma de hacerlo más rápido sin pagar el plan de Riot que da más cuota.
 
 **Puede ver cualquiera los datos?**
 Sí, la app es pública para quien tenga el link. No guarda contraseñas ni datos personales, solo estadísticas públicas de Riot.
@@ -159,3 +171,7 @@ No. Solo se consultan para armar las estadísticas y se guardan promediados.
 
 **Qué pasa si borro un jugador?**
 Desaparece de la tabla pero las partidas ya analizadas quedan en la base. Si lo volvés a agregar, recupera sus stats.
+
+---
+
+¿Querés armar la tuya? Todo el código está abierto en [github.com/joaviarruelolguin/lol-squad](https://github.com/joaviarruelolguin/lol-squad). Abajo del sitio está el link.

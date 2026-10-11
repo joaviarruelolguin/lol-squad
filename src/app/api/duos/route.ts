@@ -5,6 +5,7 @@ import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { RiotApiError, ErrorInfo } from '@/lib/errors';
 import { DuoStat } from '@/lib/types';
 import { duoSynergyRating } from '@/lib/synergy';
+import { getMatchesWithCache } from '@/lib/matchCache';
 import { guardRead } from '@/lib/rateLimit';
 
 export interface DuoResult {
@@ -94,16 +95,22 @@ export async function GET(req: Request) {
   let scannedMatches = 0;
   const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
 
-  for (const [matchId, puuids] of sharedMatches) {
+  // Pedimos todos los detalles en un lote: los que ya están en match_cache
+  // no tocan Riot, y los que faltan van con concurrencia acotada en vez de
+  // uno por uno (que a 2 req/s convertía este endpoint en 20 segundos).
+  const matchIds = sharedMatches.map(([id]) => id);
+  const details = await getMatchesWithCache(matchIds, defaultRouting);
+
+  for (const { matchId, info } of details) {
     try {
-      // routing: usamos el de la región del primer miembro (todos deberían ser de la misma squad)
-      const routing = defaultRouting;
-      const detail = await client.getMatchDetail(matchId, routing);
+      const entry = sharedMatches.find(([id]) => id === matchId);
+      if (!entry) continue;
+      const puuids = entry[1];
       scannedMatches++;
 
       // mapa puuid -> ganó?
       const puuidWin = new Map<string, boolean>();
-      for (const p of detail?.info?.participants || []) {
+      for (const p of info?.participants || []) {
         if (p.puuid) puuidWin.set(p.puuid, Boolean(p.win));
       }
 
@@ -127,10 +134,8 @@ export async function GET(req: Request) {
           }
         }
       }
-    } catch (err) {
-      // No podemos leer el detalle de esta partida; la saltamos
-      // (no inventamos resultado)
-      errors.push(toErrorInfo(err));
+    } catch {
+      // No pudimos procesar esta partida; la saltamos (no inventamos resultado)
     }
   }
 

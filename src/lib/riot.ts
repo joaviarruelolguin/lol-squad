@@ -23,21 +23,46 @@ export const cache = new SimpleCache(5 * 60 * 1000);
 // ============================================================
 // Rate limiter global: las dev keys de Riot permiten ~2 req/seg
 // Serializamos las peticiones para no comernos el 429.
+//
+// El intervalo es adaptativo: cuando Riot responde 429, `penalize()` sube el
+// piso de espera para TODAS las requests encoladas (no solo la que falló).
+// Sin esto un 429 disparaba una cascada: cada request fallaba dos veces,
+// esperaba 1,3s + 2,3s, y el endpoint pasaba de 16s a 50s de golpe.
 // ============================================================
 class RateLimiter {
   private queue: Promise<unknown> = Promise.resolve();
   private lastCall = 0;
-  private readonly minInterval: number;
+  private baseInterval: number;
+  /** Piso de espera impuesto por los 429 recientes. Se relaja solo con el tiempo. */
+  private penaltyUntil = 0;
+  private penaltyInterval = 0;
 
   constructor(requestsPerSecond = 2) {
-    this.minInterval = 1000 / requestsPerSecond;
+    this.baseInterval = 1000 / requestsPerSecond;
+  }
+
+  /** Cuánto hay que esperar entre requests ahora mismo */
+  private intervalFor(): number {
+    if (Date.now() >= this.penaltyUntil) {
+      this.penaltyInterval = 0;
+      return this.baseInterval;
+    }
+    return Math.max(this.baseInterval, this.penaltyInterval);
+  }
+
+  /**
+   * Riot nos pidió esperar. Subimos el piso de la cola para que también lo
+   * respeten las requests que ya estaban encoladas.
+   */
+  penalize(ms: number): void {
+    this.penaltyInterval = Math.max(this.penaltyInterval, ms);
+    this.penaltyUntil = Math.max(this.penaltyUntil, Date.now() + ms);
   }
 
   /** Encola una tarea y la ejecuta respetando el intervalo mínimo */
   run<T>(task: () => Promise<T>): Promise<T> {
     const result = this.queue.then(async () => {
-      const now = Date.now();
-      const wait = this.lastCall + this.minInterval - now;
+      const wait = this.lastCall + this.intervalFor() - Date.now();
       if (wait > 0) {
         await new Promise((r) => setTimeout(r, wait));
       }
@@ -52,14 +77,16 @@ class RateLimiter {
 
 const globalRateLimiter = new RateLimiter(2);
 
-/** Pausa global: si Riot dice 429, todos esperamos un poco */
-let globalCooldownUntil = 0;
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Reintenta ante errores transitorios (429, 5xx, timeout de red).
  * Backoff exponencial con jitter para no sincronizar los reintentos.
+ *
+ * Cada espera es UNA sola vez. Antes había dos (el cooldown global al principio
+ * del loop y el backoff al final), lo que duplicaba el tiempo de cada 429.
+ * Ahora el aviso para "los demás" va por `globalRateLimiter.penalize()`, que
+ * frena la cola, y esta request espera solo su backoff.
  */
 async function withRetries<T>(
   task: () => Promise<T>,
@@ -69,12 +96,6 @@ async function withRetries<T>(
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    // Respetamos la pausa global si hay una activa
-    const cooldown = globalCooldownUntil - Date.now();
-    if (cooldown > 0) {
-      await sleep(cooldown);
-    }
-
     try {
       return await task();
     } catch (err) {
@@ -95,9 +116,10 @@ async function withRetries<T>(
       const jitter = Math.random() * 500;
       const delay = Math.min(baseDelay + jitter, 15000);
 
-      // Si fue un 429, activamos pausa global para todos
+      // Si fue un 429, frenamos toda la cola (no solo esta request) y esta
+      // espera su propio backoff. Una sola espera por intento.
       if (type === 'RATE_LIMIT') {
-        globalCooldownUntil = Date.now() + delay;
+        globalRateLimiter.penalize(delay);
       }
 
       console.warn(

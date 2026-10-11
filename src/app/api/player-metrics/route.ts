@@ -9,6 +9,7 @@ import {
   PlayerMetrics,
   PlayerMetricsResult,
 } from '@/lib/types';
+import { getMatchesWithCache } from '@/lib/matchCache';
 import { guardRead } from '@/lib/rateLimit';
 
 export async function GET(req: Request) {
@@ -112,10 +113,12 @@ export async function GET(req: Request) {
   let totalMatchesAnalyzed = 0;
 
   // --- Un solo pass: obtener detalle y agregar todo ---
-  for (const matchId of orderedMatchIds) {
+  // Los detalles van en lote: lo que ya está en match_cache no toca Riot, y
+  // lo que falta se pide con concurrencia acotada en vez de uno por uno.
+  const details = await getMatchesWithCache(orderedMatchIds, defaultRouting);
+
+  for (const { info } of details) {
     try {
-      const detail = await client.getMatchDetail(matchId, defaultRouting);
-      const info = detail?.info;
       if (!info || !Array.isArray(info.participants)) continue;
 
       const duration = info.gameDuration || 1;

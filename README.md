@@ -34,7 +34,7 @@ Dashboard de League of Legends para un grupo de amigos. ranks, sinergias, análi
 
 ```bash
 # 1. Clonar el repo
-git clone https://github.com/tu-usuario/lol-squad.git
+git clone https://github.com/joaviarruelolguin/lol-squad.git
 cd lol-squad
 
 # 2. Instalar dependencias
@@ -85,6 +85,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 NEXT_PUBLIC_APP_TITLE=LoL Squad Stats
 NEXT_PUBLIC_APP_SUBTITLE=Datos reales de Riot. Sin inventos.
 NEXT_PUBLIC_APP_DESCRIPTION=Dashboard de LoL para tu squad
+NEXT_PUBLIC_APP_REPO_URL=https://github.com/tu-usuario/lol-squad
 ```
 
 ### Sin Supabase: todo funciona igual
@@ -125,6 +126,16 @@ npm run dev      # desarrollo (Turbopack, hot reload)
 npm run build    # build de producción
 npm run start    # correr el build de producción
 npm run lint     # linter
+npm run test     # tests (vitest)
+npm run test:watch
+```
+
+### Tests
+
+137 tests sobre la lógica que no se ve en pantalla: clasificación de errores de Riot, rate limiting, validación de input, TTL de la caché, enmascarado de la API key y el mapeo región → shard.
+
+```bash
+npm run test
 ```
 
 ---
@@ -152,17 +163,31 @@ src/
 │   │   ├── squad/              # CRUD de miembros
 │   │   ├── riot-key/           # gestión de API key
 │   │   └── cache/              # control de caché
-│   ├── page.tsx                # dashboard principal
+│   ├── page.tsx                # dashboard principal (orquesta tabs y estado compartido)
 │   └── layout.tsx
-├── components/                 # componentes de UI
+├── components/                 # una pestaña o panel por archivo
+│   ├── SquadTab.tsx            # tabla de posiciones + alta de miembros
+│   ├── DuosTab.tsx             # sinergias (trends + tríos + composición + dúos)
+│   ├── FlexTab.tsx             # chat IA + métricas + listado Flex paginado
+│   ├── CustomsTab.tsx          # liga interna
+│   ├── StatsTab.tsx            # premios, promedios y tilt meter
+│   ├── WeeklyTab.tsx           # resumen semanal con IA
+│   ├── CoachIA.tsx             # chat con Gemini
+│   ├── FlexMatchCard.tsx       # tarjeta de partida
+│   ├── RiotKeyManager.tsx      # badge de estado + modal de la API key
+│   ├── Skeleton.tsx            # primitivas de carga
+│   └── ...
 ├── hooks/                      # useCachedFetch, etc.
 └── lib/                        # lógica de negocio
-    ├── riot.ts                 # cliente de Riot + rate limiter
+    ├── riot.ts                 # cliente de Riot + rate limiter adaptativo
+    ├── matchCache.ts           # caché persistente de partidas (Supabase)
+    ├── rateLimit.ts            # rate limiting por endpoint
+    ├── validate.ts             # validación de input de los POST
     ├── riotKey.ts              # gestión de API key
-    ├── matchCache.ts           # caché persistente en Supabase
     ├── supabase.ts             # cliente Supabase (lazy)
     ├── storage.ts              # squad (híbrido)
     ├── customs.ts              # liga (híbrido)
+    ├── synergy.ts              # cálculo de sinergias (testeable)
     ├── errors.ts               # clasificación de errores
     ├── cache.ts                # caché en memoria
     ├── config.ts               # configuración de la app
@@ -174,15 +199,42 @@ src/
 **Todo dato viene de Riot.** No hay mocks ni placeholders. Si la API falla, se muestra el error real traducido.
 
 **Caché en dos niveles:**
-1. En memoria (por request) — evita re-fetch dentro de la misma operación
-2. En Supabase (`match_cache`) — las partidas ya descargadas no vuelven a pedirse a Riot
+1. En memoria (5 min por proceso) — evita re-fetch dentro de la misma operación y entre endpoints
+2. En Supabase (`match_cache`) — las partidas ya descargadas no vuelven a pedirse a Riot, ni después de reiniciar el server
 
-**Rate limiting propio:** el cliente serializa las peticiones a 2 req/s (el límite de las dev keys) y reintenta con backoff exponencial ante 429/5xx.
+Los seis endpoints que analizan partidas (`duos`, `trios`, `player-metrics`, `flex-matches`, `player-stats`, `composition`) comparten esa caché. Antes cada uno pedía las mismas ~40 partidas por su cuenta y las waits una por una.
+
+**Rate limiting adaptativo:** el cliente serializa las peticiones a 2 req/s y, cuando Riot devuelve 429, sube el piso de espera de toda la cola (`RateLimiter.penalize`) en vez de solo la request que falló. Sin eso, un 429 disparaba una cascada en la que cada request fallaba dos veces y esperaba el doble.
 
 **Aliados vs rivales:** el Coach IA sabe qué PUUIDs son de la squad y marca cada jugador como `[ALIADO]` o `[RIVAL]` en el contexto, para que no critique a los enemigos.
+
+---
+
+## Rendimiento
+
+Las claves de desarrollo de Riot dan **2 requests por segundo**. Analizar la squad (5 jugadores × 20 partidas) son ~40 partidas distintas, así que la primera vez hay un piso físico de unos 20 segundos.
+
+| Situación | Tiempo |
+|---|---|
+| Primer request tras reiniciar el server, sin Supabase | ~30s (trae todo de Riot) |
+| Requests siguientes | ~20ms |
+| Con Supabase configurado | La 2ª vez que se abre la app en días ya no pide nada a Riot |
+
+**La primera carga es lenta por diseño, no por un bug.** Se puede acortar de dos maneras:
+
+1. **Configurá Supabase.** La tabla `match_cache` persiste las partidas entre reinicios. Es lo que hace que en producción la app abra en segundos después del primer uso.
+2. **Tolerá la primera carga.** Las siguientes son instantáneas mientras el server no se reinicie.
+
+### Invalidar la caché
+
+Si los datos te parecen viejos, el botón **⚡ Forzar** en el header limpia la caché de Riot, la de fetch del cliente y fuerza el recálculo. El botón **⟳ Actualizar** es el suave: relee del caché.
 
 ---
 
 ## Licencia
 
 MIT
+
+---
+
+Si te sirvió o querés armar la tuya, el código está abierto: [github.com/joaviarruelolguin/lol-squad](https://github.com/joaviarruelolguin/lol-squad).

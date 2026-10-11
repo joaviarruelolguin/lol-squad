@@ -4,6 +4,7 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
 import { SquadMember, CompositionResult, ChampCombo } from '@/lib/types';
+import { getMatchesWithCache } from '@/lib/matchCache';
 import { guardRead } from '@/lib/rateLimit';
 
 const MATCHES_PER_PLAYER = 20;
@@ -88,10 +89,13 @@ export async function GET(req: Request) {
 
   let scannedMatches = 0;
 
-  for (const matchId of orderedMatchIds) {
+  // Pedimos todos los detalles en un lote: los que ya están en match_cache
+  // no tocan Riot, y los que faltan van con concurrencia acotada en vez de
+  // uno por uno (que a 2 req/s convertía este endpoint en 20 segundos).
+  const details = await getMatchesWithCache(orderedMatchIds, defaultRouting);
+
+  for (const { info } of details) {
     try {
-      const detail = await client.getMatchDetail(matchId, defaultRouting);
-      const info = detail?.info;
       if (!info || !Array.isArray(info.participants)) continue;
 
       const squadPlayers = info.participants.filter((p: any) => puuidToMember.has(p.puuid));

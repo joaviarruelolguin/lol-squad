@@ -99,19 +99,49 @@ export async function getMatchesWithCache(
   matchIds: string[],
   routing: RegionalRouting,
   withTimeline = false,
-  concurrency = 3
+  // 2 y no 3: el límite de Riot es 2 req/s con burst 2. Con 3 requests en
+  // vuelo nos pasamos del burst, Riot responde 429, se agotan los reintentos
+  // y las partidas se pierden en silencio (scanned=35 en lugar de 38).
+  concurrency = 2
 ): Promise<CachedMatch[]> {
-  if (!isSupabaseConfigured()) {
-    const out: CachedMatch[] = [];
-    for (const id of matchIds) {
+  const client = new RiotApiClient();
+  const results: CachedMatch[] = [];
+
+  // Dedupe defensivo: los endpoints ya filtran repetidos, pero con 5 jugadores
+  // compartiendo partidas es fácil que se cuele uno y termine pidiendo dos
+  // veces lo mismo.
+  const uniqueIds = [...new Set(matchIds)];
+
+  // Sin Supabase no hay caché persistente, pero igual conviene pedir en
+  // lote con concurrencia acotada: el limiter global serializa a 2 req/s,
+  // pero las esperas se solapan y no pagamos el reintento uno por uno.
+  const fetchOne = async (id: string): Promise<CachedMatch | null> => {
+    const detail = await client.getMatchDetail(id, routing);
+    if (!detail?.info) return null;
+    let timeline = null;
+    if (withTimeline) {
       try {
-        const r = await getMatchWithCache(id, routing, withTimeline);
-        if (r) out.push(r);
+        timeline = await client.getMatchTimeline(id, routing);
       } catch {
-        continue;
+        timeline = null;
       }
     }
-    return out;
+    return { matchId: id, info: detail.info, timeline };
+  };
+
+  const runBatched = async (ids: string[]) => {
+    for (let i = 0; i < ids.length; i += concurrency) {
+      const batch = ids.slice(i, i + concurrency);
+      const fetched = await Promise.allSettled(batch.map(fetchOne));
+      for (const f of fetched) {
+        if (f.status === 'fulfilled' && f.value) results.push(f.value);
+      }
+    }
+  };
+
+  if (!isSupabaseConfigured()) {
+    await runBatched(uniqueIds);
+    return orderBy(uniqueIds, results);
   }
 
   const supabase = getSupabase();
@@ -120,18 +150,16 @@ export async function getMatchesWithCache(
   const { data: rows } = await supabase
     .from('match_cache')
     .select('match_id, detail, timeline')
-    .in('match_id', matchIds);
+    .in('match_id', uniqueIds);
 
   const cacheMap = new Map<string, any>();
   for (const row of rows || []) {
     cacheMap.set(row.match_id, row);
   }
 
-  const client = new RiotApiClient();
-  const results: CachedMatch[] = [];
   const missing: string[] = [];
 
-  for (const id of matchIds) {
+  for (const id of uniqueIds) {
     const row = cacheMap.get(id);
     if (row?.detail) {
       const detail = typeof row.detail === 'string' ? JSON.parse(row.detail) : row.detail;
@@ -146,51 +174,34 @@ export async function getMatchesWithCache(
   }
 
   // Las que faltan van a Riot, con concurrencia limitada para no comerse el rate limit
-  for (let i = 0; i < missing.length; i += concurrency) {
-    const batch = missing.slice(i, i + concurrency);
-    const fetched = await Promise.allSettled(
-      batch.map(async (id) => {
-        const detail = await client.getMatchDetail(id, routing);
-        if (!detail?.info) return null;
-        let timeline = null;
-        if (withTimeline) {
-          try {
-            timeline = await client.getMatchTimeline(id, routing);
-          } catch {
-            timeline = null;
-          }
-        }
-        return { matchId: id, info: detail.info, timeline };
-      })
-    );
+  const before = results.length;
+  await runBatched(missing);
 
-    const toStore: any[] = [];
-    for (const f of fetched) {
-      if (f.status === 'fulfilled' && f.value) {
-        results.push(f.value);
-        toStore.push({
-          match_id: f.value.matchId,
-          detail: { info: f.value.info },
-          timeline: f.value.timeline ? { info: f.value.timeline.info } : null,
-          fetched_at: new Date().toISOString(),
-        });
-      }
-    }
+  // Persistir las que acabamos de traer
+  const toStore = results.slice(before).map((m) => ({
+    match_id: m.matchId,
+    detail: { info: m.info },
+    timeline: m.timeline ? { info: m.timeline.info } : null,
+    fetched_at: new Date().toISOString(),
+  }));
 
-    if (toStore.length > 0) {
-      try {
-        await supabase.from('match_cache').upsert(toStore, { onConflict: 'match_id' });
-      } catch {
-        // no es crítico
-      }
+  if (toStore.length > 0) {
+    try {
+      await supabase.from('match_cache').upsert(toStore, { onConflict: 'match_id' });
+    } catch {
+      // no es crítico
     }
   }
 
-  // Preservar el orden original
-  const order = new Map(matchIds.map((id, i) => [id, i]));
-  results.sort((a, b) => (order.get(a.matchId) ?? 0) - (order.get(b.matchId) ?? 0));
+  return orderBy(uniqueIds, results);
+}
 
-  return results;
+/** Preserva el orden original de matchIds en los resultados */
+function orderBy(matchIds: string[], results: CachedMatch[]): CachedMatch[] {
+  const order = new Map(matchIds.map((id, i) => [id, i]));
+  return results.sort(
+    (a, b) => (order.get(a.matchId) ?? 0) - (order.get(b.matchId) ?? 0)
+  );
 }
 
 /** Estadísticas de la caché (para mostrarlas en la UI) */

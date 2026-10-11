@@ -4,6 +4,7 @@ import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
 import { SquadMember, PlayerStatsResult, PlayerAward } from '@/lib/types';
+import { getMatchesWithCache } from '@/lib/matchCache';
 import { guardRead } from '@/lib/rateLimit';
 
 export async function GET(req: Request) {
@@ -121,10 +122,13 @@ export async function GET(req: Request) {
   // Historial cronológico por jugador para el tilt meter
   const playerTimeline = new Map<string, { matchId: string; won: boolean }[]>();
 
-  for (const matchId of orderedMatchIds) {
+  // Detalles en un lote: los que ya están en match_cache no tocan Riot, y los
+  // que faltan se piden con concurrencia acotada. El helper preserva el orden
+  // de orderedMatchIds, así que el historial cronológico del tilt queda igual.
+  const details = await getMatchesWithCache(orderedMatchIds, defaultRouting);
+
+  for (const { matchId, info } of details) {
     try {
-      const detail = await client.getMatchDetail(matchId, defaultRouting);
-      const info = detail?.info;
       if (!info || !Array.isArray(info.participants)) continue;
 
       const squadPlayers = info.participants.filter(
