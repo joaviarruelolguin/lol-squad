@@ -33,6 +33,7 @@ import {
   KeyRound,
   XCircle,
   CircleCheck,
+  BarChart3,
 } from 'lucide-react';
 import {
   MemberResult,
@@ -50,6 +51,7 @@ import {
 import type { ErrorInfo } from '@/lib/errors';
 import CoachIA from '@/components/CoachIA';
 import PlayerMetricsCard from '@/components/PlayerMetricsCard';
+import StatsTab from '@/components/StatsTab';
 
 // Spinner reutilizable
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -88,7 +90,7 @@ export default function Home() {
   const [chatExpanded, setChatExpanded] = useState(true);
   const [matchPickerOpen, setMatchPickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'squad' | 'duos' | 'flex' | 'customs'>('squad');
+  const [activeTab, setActiveTab] = useState<'squad' | 'duos' | 'flex' | 'stats' | 'customs'>('squad');
   const [cacheSize, setCacheSize] = useState<number | null>(null);
   const [forceRefreshing, setForceRefreshing] = useState(false);
 
@@ -763,6 +765,17 @@ export default function Home() {
             Sinergia
           </button>
           <button
+            onClick={() => setActiveTab('stats')}
+            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
+              activeTab === 'stats'
+                ? 'border-amber-500 text-amber-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            Stats
+          </button>
+          <button
             onClick={() => setActiveTab('customs')}
             className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
               activeTab === 'customs'
@@ -1143,6 +1156,30 @@ export default function Home() {
 
               </>
             )}
+          </div>
+        )}
+
+        {/* TAB: STATS / GRÁFICOS */}
+        {activeTab === 'stats' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-amber-400" />
+                Estadísticas y Premios
+              </h2>
+              <p className="text-sm text-slate-400">
+                Premios de la squad, winrate por rol y el tilt meter (rendimiento después de una derrota).
+              </p>
+            </div>
+
+            <StatsTab
+              members={stats.map((s) => ({
+                id: s.member.id,
+                gameName: s.member.gameName,
+                nickname: s.member.nickname,
+                profileIconId: s.member.profileIconId || 29,
+              }))}
+            />
           </div>
         )}
 

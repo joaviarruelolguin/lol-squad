@@ -222,3 +222,76 @@ export interface PlayerMetricsResult {
   totalMatchesAnalyzed: number;
 }
 
+// ---------- Stats / Awards ----------
+export interface PlayerAward {
+  memberId: string;
+  title: string;
+  emoji: string;
+  value: string;
+}
+
+export interface RoleStat {
+  memberId: string;
+  role: string;
+  games: number;
+  winrate: number;
+}
+
+export interface TiltData {
+  memberId: string;
+  afterWinWinrate: number | null;
+  afterLossWinrate: number | null;
+}
+
+export interface PlayerStatsResult {
+  status: 'ok' | 'partial' | 'error';
+  errors: ErrorInfo[];
+  awards: PlayerAward[];
+  roleStats: RoleStat[];
+  tiltData: TiltData[];
+  totalMatches: number;
+}
+
+// ---------- Diferenciales por lane (timeline match-v5) ----------
+export interface LaneDiffPlayer {
+  puuid: string;
+  gameName: string;
+  nickname?: string;
+  isSquad: boolean;
+  memberId?: string;
+  teamId: number;
+  lane: string;
+  championName: string;
+  win: boolean;
+  totalGold: number;
+  xp: number;
+  cs: number;
+}
+
+export interface LaneDiffCheckpoint {
+  minute: number;
+  goldDiff: number;
+  xpDiff: number;
+  myGold: number;
+  theirGold: number;
+  myXp: number;
+  theirXp: number;
+  squadPlayers: LaneDiffPlayer[];
+  laneBreakdown: {
+    lane: string;
+    goldDiff: number;
+    ourPlayer: string;
+    theirPlayer: string;
+  }[];
+}
+
+export interface LaneDiffResult {
+  matchId: string;
+  date: string;
+  duration: number;
+  userTeamId: number;
+  enemyTeamId: number;
+  userTeamWon: boolean;
+  checkpoints: LaneDiffCheckpoint[];
+}
+

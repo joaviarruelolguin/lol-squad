@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Clock, Plus, AlertCircle } from 'lucide-react';
 import { FlexMatch } from '@/lib/types';
+import LaneDiffPanel from './LaneDiffPanel';
 
 // Spinner reutilizable
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -108,6 +109,24 @@ export default function CoachIA({
   formatFlexDate,
   onLoadChat,
 }: CoachIAProps) {
+  const historyRef = useRef<HTMLDivElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar dropdowns al clickear afuera
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (historyRef.current && !historyRef.current.contains(t)) {
+        setChatHistoryOpen(false);
+      }
+      if (pickerRef.current && !pickerRef.current.contains(t)) {
+        setMatchPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
   return (
     <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
@@ -120,7 +139,7 @@ export default function CoachIA({
         </h3>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           {/* Historial de chats */}
-          <div className="relative">
+          <div className="relative" ref={historyRef}>
             <button
               onClick={() => setChatHistoryOpen((v) => !v)}
               className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition"
@@ -135,7 +154,7 @@ export default function CoachIA({
               )}
             </button>
             {chatHistoryOpen && (
-              <div className="absolute right-0 left-auto z-30 mt-2 w-72 sm:w-80 max-w-[calc(100vw-1rem)] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+              <div className="absolute left-0 sm:left-auto sm:right-0 z-30 mt-2 w-[min(20rem,calc(100vw-2rem))] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
                 <div className="px-3 py-2 border-b border-slate-800 text-xs font-semibold text-slate-400">
                   Historial de chats
                 </div>
@@ -200,7 +219,7 @@ export default function CoachIA({
       </div>
 
       {/* Selector de partida personalizado */}
-      <div className="relative mb-3">
+      <div className="relative mb-3" ref={pickerRef}>
         <button
           onClick={() => setMatchPickerOpen((v) => !v)}
           className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2.5 text-sm text-left flex items-center justify-between gap-2 hover:border-slate-600 transition"
@@ -254,6 +273,9 @@ export default function CoachIA({
           </div>
         )}
       </div>
+
+      {/* Diferenciales de línea de la partida seleccionada */}
+      {aiMatchId && <LaneDiffPanel matchId={aiMatchId} />}
 
       {chatExpanded && (
         <>

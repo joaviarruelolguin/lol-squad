@@ -163,4 +163,10 @@ export class RiotApiClient {
     const url = `https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}`;
     return this.fetchRiot<any>(url, TTL.matchDetail);
   }
+
+  // 8. Timeline del match (frames por minuto: oro, XP, CS, etc.)
+  async getMatchTimeline(matchId: string, routing: RegionalRouting = 'americas') {
+    const url = `https://${routing}.api.riotgames.com/lol/match/v5/matches/${matchId}/timeline`;
+    return this.fetchRiot<any>(url, TTL.matchDetail);
+  }
 }

@@ -93,7 +93,15 @@ export async function getKeyMeta(): Promise<RiotKeyMeta | null> {
       meta = fileGetKeyMeta();
     }
   } else {
-    meta = fileGetKeyMeta();
+    // La variable de entorno gana sobre el archivo local.
+    // Esto evita que un riot-key.json viejo pise una key nueva
+    // cargada en .env.local / Vercel.
+    const envKey = process.env.RIOT_API_KEY;
+    if (envKey) {
+      meta = { key: envKey, setAt: new Date().toISOString() };
+    } else {
+      meta = fileGetKeyMeta();
+    }
   }
 
   if (meta) {
