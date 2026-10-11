@@ -1,4 +1,4 @@
-/** Bloque base con el shimmer animado */
+﻿/** Bloque base con el shimmer animado */
 export function Skeleton({ className = '' }: { className?: string }) {
   return (
     <div className={`relative overflow-hidden rounded-md bg-slate-800/60 ${className}`}>
@@ -84,24 +84,4 @@ export function SkeletonTable({ rows = 5, cols = 6 }: { rows?: number; cols?: nu
       ))}
     </div>
   );
-}
-
-/** Placeholder de gráfico grande (para los que usan recharts) */
-export function SkeletonChart({ className = 'h-56' }: { className?: string }) {
-  return (
-    <div className={`flex items-end gap-2 p-2 ${className}`}>
-      {[45, 70, 55, 85, 60, 75, 50].map((h, i) => (
-        <Skeleton
-          key={i}
-          className="flex-1 rounded-t-md"
-          // eslint-disable-next-line react/forbid-dom-props
-        />
-      ))}
-    </div>
-  );
-}
-
-/** Placeholder de dropdown */
-export function SkeletonDropdown({ className = 'h-10' }: { className?: string }) {
-  return <Skeleton className={`${className} w-full rounded-lg`} />;
 }
