@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   await connection();
   try {
     const body = await req.json();
-    const { matchId, message, history = [], chatId } = body;
+    const { matchId, message, history = [], chatId, model: requestedModel } = body;
 
     if (!matchId || !message) {
       return NextResponse.json(
@@ -31,8 +31,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // Modelo configurable (por si Gemini renombra versiones)
-    const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+    // Modelos en orden de preferencia: si uno falla por saturación (503/429),
+// caemos automáticamente al siguiente.
+// Si el usuario eligió uno explícitamente, ese va primero (con fallback igual).
+const MODEL_FALLBACKS = [
+  requestedModel,
+  process.env.GEMINI_MODEL,
+  'gemini-3.8-flash',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+].filter(Boolean) as string[];
+
+// Evitamos repetir el mismo modelo en la lista
+const UNIQUE_MODELS = [...new Set(MODEL_FALLBACKS)];
 
     // 1. Traer el detalle de la partida (cacheado 24h)
     const client = new RiotApiClient();
@@ -103,31 +114,66 @@ Reglas:
 - Sé conciso: resumí en 3-6 viñetas cuando corresponda, y dá 1-2 tips prácticos.
 - Respondé siempre en español (rioplatense, casual).`;
 
-    const aiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents,
-        }),
-      }
-    );
+    const requestBody = JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents,
+    });
 
-    if (!aiRes.ok) {
-      const text = await aiRes.text();
-      let msg = 'Error al consultar la IA.';
+    // Intentamos cada modelo hasta que uno responda.
+    // 503 / 429 = saturación temporal -> probamos el siguiente.
+    let aiData: any = null;
+    let lastError = '';
+    let usedModel = UNIQUE_MODELS[0];
+
+    for (const modelName of UNIQUE_MODELS) {
       try {
-        const parsed = JSON.parse(text);
-        msg = parsed?.error?.message || msg;
-      } catch {
-        /* ignore */
+        const aiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: requestBody,
+          }
+        );
+
+        if (aiRes.ok) {
+          aiData = await aiRes.json();
+          usedModel = modelName;
+          break;
+        }
+
+        const text = await aiRes.text();
+        let msg = 'Error al consultar la IA.';
+        try {
+          const parsed = JSON.parse(text);
+          msg = parsed?.error?.message || msg;
+        } catch {
+          /* ignore */
+        }
+        lastError = msg;
+
+        // Si no es saturación (503/429/overloaded), no tiene sentido reintentar
+        if (aiRes.status !== 503 && aiRes.status !== 429) {
+          return NextResponse.json(
+            { error: msg, errorType: 'AI_ERROR' },
+            { status: 502 }
+          );
+        }
+      } catch (err: any) {
+        lastError = err?.message || 'Error de red al contactar a Gemini.';
       }
-      return NextResponse.json({ error: msg, errorType: 'AI_ERROR' }, { status: 502 });
     }
 
-    const aiData = await aiRes.json();
+    if (!aiData) {
+      return NextResponse.json(
+        {
+          error: `Todos los modelos están saturados ahora mismo. Probá en un rato. (${lastError})`,
+          errorType: 'AI_OVERLOADED',
+        },
+        { status: 503 }
+      );
+    }
+
     const reply =
       aiData?.candidates?.[0]?.content?.parts
         ?.map((p: any) => p.text)
@@ -166,7 +212,7 @@ Reglas:
       }
     }
 
-    return NextResponse.json({ reply, chatId: newChatId });
+    return NextResponse.json({ reply, chatId: newChatId, model: usedModel });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Clock, Plus, AlertCircle } from 'lucide-react';
+import { Bot, Clock, Plus, AlertCircle, Cpu, CircleCheck } from 'lucide-react';
 import { FlexMatch } from '@/lib/types';
 import LaneDiffPanel from './LaneDiffPanel';
 
@@ -85,6 +85,8 @@ interface CoachIAProps {
   loadChatHistory: () => Promise<void>;
   formatFlexDate: (d: string) => string;
   onLoadChat: (messages: { role: 'user' | 'assistant'; content: string }[], matchId: string) => void;
+  selectedModel: string;
+  onModelChange: (m: string) => void;
 }
 
 export default function CoachIA({
@@ -108,9 +110,20 @@ export default function CoachIA({
   loadChatHistory,
   formatFlexDate,
   onLoadChat,
+  selectedModel,
+  onModelChange,
 }: CoachIAProps) {
   const historyRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const modelRef = useRef<HTMLDivElement>(null);
+  const [modelOpen, setModelOpen] = useState(false);
+
+  const MODELS = [
+    { id: '', label: 'Automático', desc: 'Fallback con reintentos' },
+    { id: 'gemini-3.8-flash', label: 'Flash 3.8', desc: 'Rápido' },
+    { id: 'gemini-2.5-flash', label: 'Flash 2.5', desc: 'Estable' },
+    { id: 'gemini-2.0-flash', label: 'Flash 2.0', desc: 'Liviano' },
+  ];
 
   // Cerrar dropdowns al clickear afuera
   useEffect(() => {
@@ -121,6 +134,9 @@ export default function CoachIA({
       }
       if (pickerRef.current && !pickerRef.current.contains(t)) {
         setMatchPickerOpen(false);
+      }
+      if (modelRef.current && !modelRef.current.contains(t)) {
+        setModelOpen(false);
       }
     };
     document.addEventListener('mousedown', onClickOutside);
@@ -215,6 +231,47 @@ export default function CoachIA({
           >
             {chatExpanded ? 'Comprimir' : 'Expandir'}
           </button>
+          {/* Selector de modelo */}
+          <div className="relative" ref={modelRef}>
+            <button
+              onClick={() => setModelOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition"
+              title="Modelo de IA"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">
+                {MODELS.find((m) => m.id === selectedModel)?.label || 'Auto'}
+              </span>
+            </button>
+            {modelOpen && (
+              <div className="absolute right-0 left-auto z-30 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+                {MODELS.map((m) => (
+                  <button
+                    key={m.id || 'auto'}
+                    onClick={() => {
+                      onModelChange(m.id);
+                      setModelOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 hover:bg-slate-800 transition flex items-center justify-between gap-2 ${
+                      selectedModel === m.id ? 'bg-emerald-500/10' : ''
+                    }`}
+                  >
+                    <div>
+                      <div className={`text-xs font-semibold ${
+                        selectedModel === m.id ? 'text-emerald-300' : 'text-slate-200'
+                      }`}>
+                        {m.label}
+                      </div>
+                      <div className="text-[10px] text-slate-500">{m.desc}</div>
+                    </div>
+                    {selectedModel === m.id && (
+                      <CircleCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -305,9 +362,25 @@ export default function CoachIA({
           )}
 
           {aiError && (
-            <div className="bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2 text-rose-300 text-xs flex items-start gap-2 mb-3">
+            <div className="bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2.5 text-rose-300 text-xs flex items-start gap-2 mb-3">
               <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <span>{aiError}</span>
+              <div>
+                <div className="font-semibold mb-0.5">
+                  {aiError.includes('saturados') || aiError.includes('high demand')
+                    ? 'Gemini está saturado ahora mismo'
+                    : 'No se pudo consultar a la IA'}
+                </div>
+                <div className="text-rose-200/80">
+                  {aiError.includes('saturados') || aiError.includes('high demand') ? (
+                    <>
+                      Es un problema temporal de Google, no de la app. Probá de nuevo en un rato
+                      o cambiá el modelo con el botón <Cpu className="inline w-3 h-3" />.
+                    </>
+                  ) : (
+                    aiError
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

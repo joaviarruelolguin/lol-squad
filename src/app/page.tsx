@@ -105,6 +105,7 @@ export default function Home() {
     { id: string; title: string; matchId: string; messageCount: number; updatedAt: string }[]
   >([]);
   const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
+  const [aiModel, setAiModel] = useState(''); // '' = automático con fallback
 
   // Form states
   const [gameName, setGameName] = useState('');
@@ -184,7 +185,17 @@ export default function Home() {
   };
 
   const handleLoadMoreFlex = () => {
-    loadFlex(flexOffset + flexLimit, true);
+    // Guardamos la posición del scroll para restaurarla después de cargar,
+    // porque al re-renderizar el contenido el navegador sube al tope.
+    const scrollBefore = typeof window !== 'undefined' ? window.scrollY : 0;
+    loadFlex(flexOffset + flexLimit, true).then(() => {
+      if (typeof window !== 'undefined') {
+        // requestAnimationFrame espera a que el DOM pinte las partidas nuevas
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollBefore, behavior: 'smooth' });
+        });
+      }
+    });
   };
 
   const loadMetrics = async () => {
@@ -228,6 +239,7 @@ export default function Home() {
           message: aiMessage,
           history: aiHistory,
           chatId: (aiHistory as any)._chatId || undefined,
+          model: aiModel || undefined,
         }),
       });
       const data = await res.json();
@@ -646,7 +658,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-100">
-                Squad Central // LoL
+                ZSUR LoL
               </h1>
               <p className="text-xs text-slate-400 font-mono hidden sm:inline">Datos reales de Riot. Sin inventos.</p>
             </div>
@@ -798,7 +810,7 @@ export default function Home() {
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-yellow-400" />
-                  El Leaderboard del Discord
+                  Tabla de posiciones
                 </h2>
                 <span className="text-xs bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full border border-slate-700">
                   {stats.length} Miembros
@@ -1038,6 +1050,8 @@ export default function Home() {
               loadChatHistory={loadChatHistory}
               formatFlexDate={formatFlexDate}
               onLoadChat={handleLoadChat}
+              selectedModel={aiModel}
+              onModelChange={setAiModel}
             />
 
             {/* MÉTRICAS AGREGADAS POR JUGADOR */}
@@ -1183,6 +1197,8 @@ export default function Home() {
                 nickname: s.member.nickname,
                 profileIconId: s.member.profileIconId || 29,
               }))}
+              metrics={playerMetrics}
+              metricsLoading={metricsLoading}
             />
           </div>
         )}
