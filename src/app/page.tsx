@@ -57,6 +57,53 @@ const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; classNam
   </svg>
 );
 
+// Renderizador de markdown ligero para el chat de la IA
+const MarkdownText = ({ text }: { text: string }) => {
+  const renderLine = (line: string, key: number) => {
+    // Headers
+    if (line.startsWith('#### ')) {
+      return <h5 key={key} className="font-bold text-slate-100 mt-2 mb-1 text-xs">{renderInline(line.slice(5))}</h5>;
+    }
+    if (line.startsWith('### ')) {
+      return <h4 key={key} className="font-bold text-slate-100 mt-2 mb-1 text-sm">{renderInline(line.slice(4))}</h4>;
+    }
+    if (line.startsWith('## ')) {
+      return <h3 key={key} className="font-bold text-slate-100 mt-2 mb-1 text-sm">{renderInline(line.slice(3))}</h3>;
+    }
+    if (line.startsWith('# ')) {
+      return <h2 key={key} className="font-bold text-slate-100 mt-2 mb-1 text-base">{renderInline(line.slice(2))}</h2>;
+    }
+    // Listas
+    if (line.startsWith('- ') || line.startsWith('• ')) {
+      return (
+        <div key={key} className="flex gap-1.5 ml-2">
+          <span className="text-slate-500">•</span>
+          <span>{renderInline(line.slice(2))}</span>
+        </div>
+      );
+    }
+    // Línea normal
+    return <p key={key} className="leading-relaxed">{renderInline(line)}</p>;
+  };
+
+  const renderInline = (text: string): React.ReactNode => {
+    // Dividir por **bold** y *italic*
+    const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i} className="font-semibold text-slate-100">{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+        return <em key={i} className="italic text-slate-300">{part.slice(1, -1)}</em>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  const lines = text.split('\n');
+  return <div className="space-y-1">{lines.map((line, i) => renderLine(line, i))}</div>;
+};
+
 export default function Home() {
   const [stats, setStats] = useState<MemberResult[]>([]);
   const [duoData, setDuoData] = useState<DuoResult | null>(null);
@@ -1152,7 +1199,11 @@ export default function Home() {
                           <div className="font-bold mb-0.5">
                             {h.role === 'user' ? 'Vos' : 'Coach'}
                           </div>
-                          <div className="whitespace-pre-wrap">{h.content}</div>
+                          {h.role === 'user' ? (
+                            <div className="whitespace-pre-wrap">{h.content}</div>
+                          ) : (
+                            <MarkdownText text={h.content} />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1177,9 +1228,16 @@ export default function Home() {
                     <button
                       type="submit"
                       disabled={aiLoading || !aiMatchId}
-                      className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-lg text-sm transition"
+                      className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-4 py-2 rounded-lg text-sm transition flex items-center justify-center gap-2 min-w-[120px]"
                     >
-                      {aiLoading ? '...' : 'Preguntar'}
+                      {aiLoading ? (
+                        <>
+                          <Spinner size="w-4 h-4" />
+                          <span>Preparando respuesta...</span>
+                        </>
+                      ) : (
+                        'Preguntar'
+                      )}
                     </button>
                   </form>
                 </>
