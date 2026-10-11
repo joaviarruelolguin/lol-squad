@@ -45,7 +45,13 @@ export function checkRateLimit(
         if (now >= v.resetAt) buckets.delete(k);
       }
     }
-    return { ok: true, remaining: limit - 1, resetInMs: windowMs };
+    // El primer request también tiene que respetar el límite: con limit 0
+    // esta función tiene que bloquear, no dejar pasar de a uno.
+    return {
+      ok: 1 <= limit,
+      remaining: Math.max(0, limit - 1),
+      resetInMs: windowMs,
+    };
   }
 
   bucket.count++;
