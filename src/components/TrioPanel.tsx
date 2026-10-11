@@ -72,6 +72,13 @@ export default function TrioPanel() {
     );
   }
 
+  // Rango de fechas de los datos analizados, para que se entienda que
+    // "hace 22d" en una tarjeta no significa que el dato está viejo.
+  const timestamps = data.trios.map((t) => t.lastPlayed).filter(Boolean);
+  const newest = timestamps.length > 0 ? Math.max(...timestamps) : 0;
+  const oldest = timestamps.length > 0 ? Math.min(...timestamps) : 0;
+  const daysAgo = (ts: number) => Math.floor((Date.now() - ts) / 86400000);
+
   const counts = {
     all: data.trios.length,
     GOD_TIER: data.trios.filter((t) => t.synergyRating === 'GOD_TIER').length,
@@ -99,9 +106,25 @@ export default function TrioPanel() {
         </button>
       </div>
 
-      <p className="text-xs text-slate-400">
-        {data.scannedMatches} partidas analizadas · solo tríos con 2+ partidas · con 3+ partidas exigimos más winrate para "God Tier"
-      </p>
+      <div className="space-y-1">
+        <p className="text-xs text-slate-400">
+          {data.scannedMatches} partidas analizadas · {data.trios.length} tríos con 2+ partidas
+        </p>
+        {newest > 0 && (
+          <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+            <Clock className="w-3 h-3" />
+            Datos del {daysAgo(newest) === 0 ? 'día de hoy' : `hace ${daysAgo(newest)} días`}
+            {daysAgo(oldest) !== daysAgo(newest) && (
+              <> (tríos más antiguos: hace {daysAgo(oldest)} días)</>
+            )}
+            <span className="text-slate-600">· ordenados por winrate, no por fecha</span>
+          </p>
+        )}
+        <p className="text-[11px] text-slate-600">
+          El winrate del trío puede ser más alto que el individual: cuenta solo las partidas
+          donde esos tres jugaron juntos.
+        </p>
+      </div>
 
       {/* Filtros */}
       <div className="flex gap-1.5 flex-wrap">

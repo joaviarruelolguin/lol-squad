@@ -58,6 +58,9 @@ export default function TrendsPanel() {
       <p className="text-xs text-slate-400">
         {data.scannedMatches} partidas analizadas · patrones de muerte por minuto, franja horaria y día de la semana
       </p>
+      <p className="text-[11px] text-slate-500">
+        Se toman las últimas 20 partidas Flex de cada jugador, sin filtro de fecha.
+      </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {data.trends.map((t) => (

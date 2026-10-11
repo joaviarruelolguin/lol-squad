@@ -1099,8 +1099,13 @@ export default function Home() {
               </div>
             ) : (
               <>
-                <div className="text-xs text-slate-500 font-mono">
-                  {duoData?.scannedMatches} partidas compartidas analizadas · {duoData?.membersAnalyzed} miembros
+                <div className="space-y-1">
+                  <div className="text-xs text-slate-500 font-mono">
+                    {duoData?.scannedMatches} partidas compartidas analizadas · {duoData?.membersAnalyzed} miembros
+                  </div>
+                  <div className="text-[11px] text-slate-600">
+                    Solo dúos con 2+ partidas juntos · últimas 20 partidas Flex de cada jugador
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {duoData?.duos.map((d, index) => {
