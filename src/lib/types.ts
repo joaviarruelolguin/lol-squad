@@ -183,3 +183,42 @@ export interface DuoStat {
   synergyRating: 'GOD_TIER' | 'REGULAR' | 'FRIA' | 'A_PULIR';
 }
 
+// ---------- Métricas agregadas por jugador (Flex) ----------
+export interface PlayerMetrics {
+  memberId: string;
+  gameName: string;
+  nickname: string;
+  profileIconId: number;
+  totalGames: number;
+  wins: number;
+  losses: number;
+  winrate: number;
+  avgKills: number;
+  avgDeaths: number;
+  avgAssists: number;
+  avgKDA: number;
+  avgDamage: number;
+  avgVisionScore: number;
+  avgCS: number;
+  avgGold: number;
+  mostPlayedChampion: {
+    name: string;
+    games: number;
+    winrate: number;
+  } | null;
+  championPool: {
+    name: string;
+    games: number;
+    winrate: number;
+  }[];
+  damageShare: number; // % del daño del equipo
+  visionPerMinute: number;
+}
+
+export interface PlayerMetricsResult {
+  status: 'ok' | 'partial' | 'error';
+  errors: ErrorInfo[];
+  metrics: PlayerMetrics[];
+  totalMatchesAnalyzed: number;
+}
+

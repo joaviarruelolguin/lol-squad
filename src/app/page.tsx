@@ -44,8 +44,18 @@ import {
   FlexMatch,
   FlexPlayer,
   WeakPoint,
+  PlayerMetrics,
+  PlayerMetricsResult,
 } from '@/lib/types';
 import type { ErrorInfo } from '@/lib/errors';
+
+// Spinner reutilizable
+const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
+  <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+  </svg>
+);
 
 export default function Home() {
   const [stats, setStats] = useState<MemberResult[]>([]);
@@ -79,6 +89,17 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'squad' | 'duos' | 'flex' | 'customs'>('squad');
   const [cacheSize, setCacheSize] = useState<number | null>(null);
   const [forceRefreshing, setForceRefreshing] = useState(false);
+
+  // Métricas agregadas por jugador (Flex)
+  const [playerMetrics, setPlayerMetrics] = useState<PlayerMetrics[]>([]);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+
+  // Historial de chats (Supabase)
+  const [chatHistory, setChatHistory] = useState<
+    { id: string; title: string; matchId: string; messageCount: number; updatedAt: string }[]
+  >([]);
+  const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
 
   // Form states
   const [gameName, setGameName] = useState('');
@@ -129,6 +150,8 @@ export default function Home() {
   useEffect(() => {
     fetchData();
     loadFlex(0, false);
+    loadMetrics();
+    loadChatHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -159,6 +182,33 @@ export default function Home() {
     loadFlex(flexOffset + flexLimit, true);
   };
 
+  const loadMetrics = async () => {
+    try {
+      setMetricsLoading(true);
+      setMetricsError(null);
+      const res = await fetch('/api/player-metrics').then((r) => r.json());
+      if (res.status === 'error') {
+        setMetricsError(res.errors?.[0]?.message || 'No se pudieron calcular métricas.');
+        setPlayerMetrics([]);
+      } else {
+        setPlayerMetrics(res.metrics || []);
+      }
+    } catch (err) {
+      setMetricsError('Error de red al cargar métricas.');
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
+
+  const loadChatHistory = async () => {
+    try {
+      const res = await fetch('/api/ai/chats').then((r) => r.json());
+      setChatHistory(res.chats || []);
+    } catch (err) {
+      // silencioso
+    }
+  };
+
   const handleAiChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!aiMatchId || !aiMessage.trim()) return;
@@ -172,6 +222,7 @@ export default function Home() {
           matchId: aiMatchId,
           message: aiMessage,
           history: aiHistory,
+          chatId: (aiHistory as any)._chatId || undefined,
         }),
       });
       const data = await res.json();
@@ -179,13 +230,17 @@ export default function Home() {
         setAiError(data.error || 'La IA no pudo responder');
         return;
       }
-      setAiHistory((h) => [
-        ...h,
-        { role: 'user', content: aiMessage },
-        { role: 'assistant', content: data.reply },
-      ]);
+      const newChatId = data.chatId;
+      const newHistory = [
+        ...aiHistory,
+        { role: 'user' as const, content: aiMessage },
+        { role: 'assistant' as const, content: data.reply },
+      ];
+      (newHistory as any)._chatId = newChatId;
+      setAiHistory(newHistory);
       setAiReply(data.reply);
       setAiMessage('');
+      loadChatHistory();
     } catch (err) {
       setAiError('Error de red al contactar la IA');
     } finally {
@@ -199,6 +254,7 @@ export default function Home() {
     setAiMessage('');
     setAiError(null);
     setAiMatchId('');
+    setChatHistoryOpen(false);
   };
 
   // ---------- API Key de Riot ----------
@@ -721,7 +777,10 @@ export default function Home() {
               </div>
 
               {loading ? (
-                <div className="p-12 text-center text-slate-400">Trayendo datos de Riot...</div>
+                <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
+                  <Spinner size="w-8 h-8" className="text-cyan-400" />
+                  <span className="text-sm">Trayendo datos de Riot...</span>
+                </div>
               ) : stats.length === 0 ? (
                 <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">
                   <Users className="w-10 h-10 mx-auto mb-3 text-slate-600" />
@@ -808,9 +867,16 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2.5 rounded-lg text-sm transition disabled:opacity-50"
+                    className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2.5 rounded-lg text-sm transition disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {submitting ? 'Verificando con Riot...' : 'Agregar a la Squad'}
+                    {submitting ? (
+                      <>
+                        <Spinner size="w-4 h-4" />
+                        Verificando...
+                      </>
+                    ) : (
+                      'Agregar a la Squad'
+                    )}
                   </button>
                 </form>
               </div>
@@ -853,7 +919,10 @@ export default function Home() {
             )}
 
             {loading ? (
-              <div className="p-12 text-center text-slate-400">Escaneando historial de partidas...</div>
+              <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
+                <Spinner size="w-8 h-8" className="text-pink-400" />
+                <span className="text-sm">Escaneando historial...</span>
+              </div>
             ) : duoData && duoData.duos.length === 0 ? (
               <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">
                 <ShieldAlert className="w-10 h-10 mx-auto mb-3 text-slate-600" />
@@ -926,18 +995,86 @@ export default function Home() {
                   </span>
                 </h3>
                 <div className="flex items-center gap-2">
+                  {/* Historial de chats */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setChatHistoryOpen((v) => !v)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition"
+                      title="Historial de chats"
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Chats</span>
+                      {chatHistory.length > 0 && (
+                        <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                          {chatHistory.length}
+                        </span>
+                      )}
+                    </button>
+                    {chatHistoryOpen && (
+                      <div className="absolute right-0 z-30 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+                        <div className="px-3 py-2 border-b border-slate-800 text-xs font-semibold text-slate-400">
+                          Historial de chats
+                        </div>
+                        {chatHistory.length === 0 ? (
+                          <div className="px-3 py-4 text-xs text-slate-500 text-center">
+                            No hay chats guardados
+                          </div>
+                        ) : (
+                          <div className="max-h-64 overflow-y-auto">
+                            {chatHistory.map((c) => (
+                              <button
+                                key={c.id}
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch('/api/ai/chats', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ chatId: c.id }),
+                                    }).then((r) => r.json());
+                                    if (res.chat) {
+                                      const msgs = res.chat.messages || [];
+                                      const newHistory = [...msgs] as any;
+                                      newHistory._chatId = c.id;
+                                      setAiHistory(newHistory);
+                                      setAiMatchId(res.chat.matchId || '');
+                                      setAiReply(null);
+                                      setAiMessage('');
+                                      setAiError(null);
+                                      setChatHistoryOpen(false);
+                                    }
+                                  } catch (err) {
+                                    // silencioso
+                                  }
+                                }}
+                                className="w-full text-left px-3 py-2.5 hover:bg-slate-800 transition border-b border-slate-800/50"
+                              >
+                                <div className="text-xs font-medium text-slate-200 truncate">
+                                  {c.title}
+                                </div>
+                                <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
+                                  <span>{c.messageCount} mensajes</span>
+                                  <span>·</span>
+                                  <span>{new Date(c.updatedAt).toLocaleDateString('es-AR')}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={handleNewChat}
-                    className="text-xs font-semibold text-slate-400 hover:text-slate-200 transition flex items-center gap-1.5"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition"
                   >
-                    <span className="text-sm">+</span> Nuevo chat
+                    <Plus className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Nuevo</span>
                   </button>
                   <button
                     onClick={() => setChatExpanded((v) => !v)}
-                    className="text-xs font-semibold text-slate-400 hover:text-slate-200 transition flex items-center gap-1.5"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition"
                   >
                     {chatExpanded ? 'Comprimir' : 'Expandir'}
-                    <span className="text-sm">{chatExpanded ? '−' : '+'}</span>
                   </button>
                 </div>
               </div>
@@ -1049,6 +1186,140 @@ export default function Home() {
               )}
             </div>
 
+            {/* MÉTRICAS AGREGADAS POR JUGADOR */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-bold flex items-center gap-2 text-white">
+                  <TrendingUp className="w-5 h-5 text-cyan-400" />
+                  Métricas por Jugador
+                </h3>
+                <button
+                  onClick={loadMetrics}
+                  disabled={metricsLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition disabled:opacity-50"
+                >
+                  {metricsLoading ? <Spinner size="w-3.5 h-3.5" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline">Actualizar</span>
+                </button>
+              </div>
+
+              {metricsLoading ? (
+                <div className="flex flex-col items-center justify-center p-8 text-slate-400 gap-3">
+                  <Spinner size="w-6 h-6" className="text-cyan-400" />
+                  <span className="text-sm">Calculando métricas...</span>
+                </div>
+              ) : metricsError ? (
+                <div className="bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2 text-rose-300 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>{metricsError}</span>
+                </div>
+              ) : playerMetrics.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 text-sm">
+                  No hay métricas disponibles todavía.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {playerMetrics.map((m, idx) => (
+                    <div
+                      key={m.memberId}
+                      className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 space-y-3"
+                    >
+                      {/* Header */}
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <img
+                            src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/${m.profileIconId}.png`}
+                            alt={m.gameName}
+                            className="w-10 h-10 rounded-lg border border-slate-600"
+                          />
+                          {idx === 0 && (
+                            <Crown className="w-4 h-4 text-amber-400 absolute -top-1.5 -right-1.5" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-sm text-white truncate">{m.gameName}</div>
+                          <div className="text-[10px] text-slate-500">"{m.nickname}"</div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-lg font-black ${m.winrate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {m.winrate}%
+                          </div>
+                          <div className="text-[10px] text-slate-500">winrate</div>
+                        </div>
+                      </div>
+
+                      {/* Stats grid */}
+                      <div className="grid grid-cols-4 gap-2">
+                        <div className="text-center">
+                          <div className="text-sm font-bold text-slate-200">{m.avgKDA}</div>
+                          <div className="text-[9px] text-slate-500 uppercase">KDA</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-sm font-bold text-slate-200">{m.avgDamage > 0 ? `${(m.avgDamage / 1000).toFixed(1)}k` : '—'}</div>
+                          <div className="text-[9px] text-slate-500 uppercase">Daño</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-sm font-bold text-slate-200">{m.avgVisionScore}</div>
+                          <div className="text-[9px] text-slate-500 uppercase">Visión</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-sm font-bold text-slate-200">{m.avgCS}</div>
+                          <div className="text-[9px] text-slate-500 uppercase">CS</div>
+                        </div>
+                      </div>
+
+                      {/* Campeón más jugado */}
+                      {m.mostPlayedChampion && (
+                        <div className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-2.5 py-1.5">
+                          <img
+                            src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${m.mostPlayedChampion.name}.png`}
+                            alt={m.mostPlayedChampion.name}
+                            className="w-6 h-6 rounded"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold text-slate-200 truncate">
+                              {m.mostPlayedChampion.name}
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              {m.mostPlayedChampion.games} partidas · {m.mostPlayedChampion.winrate}% WR
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pool de campeones */}
+                      {m.championPool.length > 0 && (
+                        <div className="flex gap-1.5 flex-wrap">
+                          {m.championPool.slice(0, 4).map((c) => (
+                            <div
+                              key={c.name}
+                              className="flex items-center gap-1 bg-slate-900/50 rounded px-1.5 py-0.5"
+                              title={`${c.name}: ${c.games} partidas, ${c.winrate}% WR`}
+                            >
+                              <img
+                                src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${c.name}.png`}
+                                alt={c.name}
+                                className="w-4 h-4 rounded-sm"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                              <span className="text-[10px] text-slate-400">{c.games}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-700/50">
+                        <span>{m.wins}V - {m.losses}D</span>
+                        <span>{m.totalGames} partidas</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div>
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Gamepad2 className="w-5 h-5 text-violet-400" />
@@ -1078,7 +1349,10 @@ export default function Home() {
             )}
 
             {flexStatus === 'idle' || flexLoading ? (
-              <div className="p-12 text-center text-slate-400">Buscando partidas Flex...</div>
+              <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
+                <Spinner size="w-8 h-8" className="text-violet-400" />
+                <span className="text-sm">Buscando partidas Flex...</span>
+              </div>
             ) : flexMatches.length === 0 ? (
               <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">
                 <Gamepad2 className="w-10 h-10 mx-auto mb-3 text-slate-600" />
@@ -1110,7 +1384,11 @@ export default function Home() {
                       disabled={flexLoading}
                       className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-semibold text-sm px-6 py-2.5 rounded-xl border border-slate-700 transition"
                     >
-                      <RefreshCw className={`w-4 h-4 ${flexLoading ? 'animate-spin' : ''}`} />
+                      {flexLoading ? (
+                        <Spinner size="w-4 h-4" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
                       {flexLoading ? 'Cargando...' : 'Cargar 5 más'}
                     </button>
                   ) : (

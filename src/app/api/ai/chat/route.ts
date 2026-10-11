@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { RiotApiClient } from '@/lib/riot';
 import { RiotApiError, ErrorInfo } from '@/lib/errors';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { routingFromMatchId } from '@/app/api/flex-matches/route';
 
 export async function POST(req: Request) {
   await connection();
   try {
     const body = await req.json();
-    const { matchId, message, history = [] } = body;
+    const { matchId, message, history = [], chatId } = body;
 
     if (!matchId || !message) {
       return NextResponse.json(
@@ -112,7 +113,40 @@ Reglas:
         ?.map((p: any) => p.text)
         .join('') || 'La IA no devolvió una respuesta.';
 
-    return NextResponse.json({ reply });
+    // Guardar en Supabase (historial de chats, FIFO 10)
+    let newChatId = chatId;
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = getSupabase();
+        const allMessages = [
+          ...history.filter((h: any) => h && h.role && h.content),
+          { role: 'user', content: String(message) },
+          { role: 'assistant', content: reply },
+        ];
+
+        if (newChatId) {
+          // Actualizar chat existente
+          await supabase
+            .from('ai_chats')
+            .update({ messages: allMessages, match_id: matchId })
+            .eq('id', newChatId);
+        } else {
+          // Crear nuevo chat
+          newChatId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          await supabase.from('ai_chats').insert({
+            id: newChatId,
+            user_id: 'squad',
+            title: String(message).slice(0, 60),
+            messages: allMessages,
+            match_id: matchId,
+          });
+        }
+      } catch (err) {
+        console.warn('No se pudo guardar el chat en Supabase:', err);
+      }
+    }
+
+    return NextResponse.json({ reply, chatId: newChatId });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
