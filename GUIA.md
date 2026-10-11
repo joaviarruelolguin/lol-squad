@@ -46,7 +46,7 @@ Acá están las últimas partidas Flex de la squad.
 
 **Cada partida muestra:**
 - Fecha, duracion y version del juego
-- Quiénes de la squad judío y si ganaron
+- Quiénes de la squad jugaron y si ganaron
 - Los dos equipos con KDA, daño (barra), vision y oro
 - **Puntos débiles** detectados automáticamente
 

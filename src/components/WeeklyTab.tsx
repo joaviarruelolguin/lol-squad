@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CalendarDays, Sparkles, RefreshCw, ChevronDown, Target, Trophy } from 'lucide-react';
+import { CalendarDays, Sparkles, RefreshCw, ChevronDown, Target, Trophy, Info } from 'lucide-react';
 import { WeeklyPlayerStat, WeeklySummary } from '@/lib/types';
 
 const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
@@ -56,8 +56,12 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
         setError(res.error);
       } else {
         setPlayerStats(res.playerStats || []);
-        setSummaries(res.summaries || []);
+        const loaded = res.summaries || [];
+        setSummaries(loaded);
         setMatchesInWindow(res.matchesInWindow || 0);
+        // Abrimos el resumen más reciente automáticamente para que el
+        // contenido no quede escondido detrás del acordeón.
+        setOpenSummary((prev) => prev ?? loaded[0]?.id ?? null);
       }
     } catch {
       setError('Error de red al cargar el resumen.');
@@ -134,6 +138,19 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
           {generating ? 'Analizando...' : 'Generar resumen semanal'}
         </button>
       </div>
+
+      {/* Explicación de por qué no hay resúmenes aún */}
+      {summaries.length === 0 && playerStats.length > 0 && (
+        <div className="flex items-start gap-2 text-[10px] text-slate-500 bg-slate-900/30 border border-slate-800/60 rounded-lg px-3 py-2">
+          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>
+            Los resúmenes se guardan en Supabase. Si el botón te dice que falta configuración,
+            revisá las variables <code className="text-slate-400">SUPABASE_URL</code> y{' '}
+            <code className="text-slate-400">SUPABASE_SERVICE_ROLE_KEY</code> en tu{' '}
+            <code className="text-slate-400">.env.local</code> o en Vercel.
+          </span>
+        </div>
+      )}
 
       {genError && (
         <div className="bg-amber-500/10 border border-amber-500/40 rounded-lg px-3 py-2.5 text-amber-300 text-xs">
@@ -304,6 +321,31 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* Estado vacío: hay stats pero falta generar el resumen con IA */}
+          {summaries.length === 0 && playerStats.length > 0 && (
+            <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl p-4 flex items-start gap-3">
+              <Sparkles className="w-5 h-5 text-violet-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-violet-200 mb-1">
+                  Falta generar el análisis
+                </div>
+                <p className="text-xs text-slate-400 mb-3">
+                  Las estadísticas de arriba son datos reales. Para obtener el resumen con IA y las
+                  3 cosas para mejorar por jugador, tocá{' '}
+                  <b className="text-violet-300">"Generar resumen semanal"</b> arriba.
+                </p>
+                <button
+                  onClick={generate}
+                  disabled={generating}
+                  className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold text-xs px-4 py-2 rounded-lg transition"
+                >
+                  {generating ? <Spinner size="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {generating ? 'Analizando...' : 'Generar ahora'}
+                </button>
               </div>
             </div>
           )}
