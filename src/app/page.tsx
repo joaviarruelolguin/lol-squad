@@ -54,6 +54,7 @@ import CoachIA from '@/components/CoachIA';
 import PlayerMetricsCard from '@/components/PlayerMetricsCard';
 import StatsTab from '@/components/StatsTab';
 import CompositionPanel from '@/components/CompositionPanel';
+import TrioPanel from '@/components/TrioPanel';
 import WeeklyTab from '@/components/WeeklyTab';
 
 // Spinner reutilizable
@@ -127,6 +128,13 @@ export default function Home() {
   const [cWinner, setCWinner] = useState<'A' | 'B' | ''>('');
   const [cMvp, setCMvp] = useState('');
   const [cError, setCError] = useState<string | null>(null);
+
+  // Balanceo automático de equipos
+  const [cPresent, setCPresent] = useState<string[]>([]);
+  const [balancing, setBalancing] = useState(false);
+  const [balanceInfo, setBalanceInfo] = useState<{
+    avgA: number; avgB: number; diff: number; fair: boolean;
+  } | null>(null);
 
   // API Key de Riot (estado + countdown)
   const [riotKeyMeta, setRiotKeyMeta] = useState<any>(null);
@@ -381,6 +389,31 @@ export default function Home() {
       await fetchData();
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleBalance = async () => {
+    if (cPresent.length < 2) return;
+    try {
+      setBalancing(true);
+      setCError(null);
+      const res = await fetch('/api/balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerIds: cPresent }),
+      }).then((r) => r.json());
+
+      if (!res.success) {
+        setCError(res.error || 'No se pudo balancear los equipos.');
+        return;
+      }
+      setCTeamA(res.teamA.map((p: any) => p.memberId));
+      setCTeamB(res.teamB.map((p: any) => p.memberId));
+      setBalanceInfo(res.balance);
+    } catch {
+      setCError('Error de red al balancear.');
+    } finally {
+      setBalancing(false);
     }
   };
 
@@ -954,6 +987,9 @@ export default function Home() {
               </p>
             </div>
 
+            {/* Matriz de tríos */}
+            <TrioPanel />
+
             {/* Recomendador de composición */}
             <CompositionPanel />
 
@@ -1286,6 +1322,65 @@ export default function Home() {
                       required
                       className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
                     />
+                  </div>
+
+                  {/* Balanceo automático */}
+                  <div className="bg-slate-900/60 border border-slate-700/50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Scale className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs font-semibold text-slate-300">
+                        Balanceo automático
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-2.5">
+                      Reparte los equipos según el rendimiento real en Flex (WR, KDA, daño, visión).
+                    </p>
+
+                    <MultiSelect
+                      members={stats.map((s) => s.member)}
+                      selected={cPresent}
+                      onChange={setCPresent}
+                      exclude={[]}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={handleBalance}
+                      disabled={balancing || cPresent.length < 2}
+                      className="mt-2.5 w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold py-2 rounded-lg text-xs transition"
+                    >
+                      {balancing ? (
+                        <>
+                          <Spinner size="w-3.5 h-3.5" />
+                          Balanceando...
+                        </>
+                      ) : (
+                        'Repartir en 2 equipos'
+                      )}
+                    </button>
+
+                    {balanceInfo && (
+                      <div className="mt-2.5 pt-2.5 border-t border-slate-700/50">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] text-slate-500">Balance</span>
+                          <span className={`text-[10px] font-bold ${
+                            balanceInfo.fair ? 'text-emerald-400' : 'text-amber-400'
+                          }`}>
+                            {balanceInfo.fair ? 'Equitativo' : `Δ ${balanceInfo.diff}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] font-mono">
+                          <span className="text-slate-500">A: {balanceInfo.avgA}</span>
+                          <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-indigo-500 rounded-full"
+                              style={{ width: `${balanceInfo.avgA}%` }}
+                            />
+                          </div>
+                          <span className="text-slate-500">B: {balanceInfo.avgB}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Selectores de jugadores */}

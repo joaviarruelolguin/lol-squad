@@ -319,6 +319,25 @@ export interface CompositionResult {
   scannedMatches: number;
 }
 
+// ---------- Matriz de tríos ----------
+export interface TrioStat {
+  memberIds: string[];
+  memberNames: { id: string; name: string; nickname?: string }[];
+  totalGames: number;
+  wins: number;
+  losses: number;
+  winrate: number;
+  synergyRating: 'GOD_TIER' | 'REGULAR' | 'FRIA' | 'A_PULIR';
+  lastPlayed: number; // timestamp de la última partida juntos
+}
+
+export interface TrioResult {
+  status: 'ok' | 'partial' | 'error';
+  errors: ErrorInfo[];
+  trios: TrioStat[];
+  scannedMatches: number;
+}
+
 // ---------- Resumen semanal automático ----------
 export interface WeeklyPlayerStat {
   memberId: string;
