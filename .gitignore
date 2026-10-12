@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...pero la plantilla sí va al repo: el README dice `cp .env.example .env.local`
+# y sin esto un clone nuevo no tiene con qué arrancar. No tiene secretos.
+!.env.example
 
 # datos locales de la app (se crean solos si no existen).
 # squad.json y customs.json tienen datos reales de los invocadores: no van al repo.
