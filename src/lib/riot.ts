@@ -17,8 +17,11 @@ export function getRegionalRouting(region: RiotRegion): RegionalRouting {
   }
 }
 
-// Caché compartida en memoria (vive mientras dura el proceso del servidor)
-export const cache = new SimpleCache(5 * 60 * 1000);
+// Caché compartida en memoria (vive mientras dura el proceso del servidor).
+// Es `unknown` porque guarda datos de muy distintas formas (cuentas, rangos,
+//|match IDs, detalles de partida); cada método de la clase la re-afirma con su
+// propio tipo al leer.
+export const cache = new SimpleCache<unknown>(5 * 60 * 1000);
 
 /**
  * Requests a Riot que están en curso, indexadas por URL.
@@ -167,9 +170,9 @@ export class RiotApiClient {
 
   private async fetchRiot<T>(url: string, ttlMs?: number): Promise<T> {
     // 1. Revisar caché
-    const cached = cache.get<T>(url);
+    const cached = cache.get(url);
     if (cached !== undefined) {
-      return cached;
+      return cached as T;
     }
 
     // 2. Si esta URL ya está en vuelo, esperarla en vez de pegarle otra vez a
@@ -194,9 +197,9 @@ export class RiotApiClient {
 
   private async fetchRiotInner<T>(url: string, ttlMs?: number): Promise<T> {
     // 1. Revisar caché
-    const cached = cache.get<T>(url);
+    const cached = cache.get(url);
     if (cached !== undefined) {
-      return cached;
+      return cached as T;
     }
 
     // 2. Consultar Riot (con rate limit global + reintentos automáticos)

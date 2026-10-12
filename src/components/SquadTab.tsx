@@ -13,8 +13,10 @@ import {
   Users,
 } from 'lucide-react';
 import { MemberResult } from '@/lib/types';
+import { profileIconUrl, championSquareUrl } from '@/lib/ddragonUrls';
 import { Skeleton } from './Skeleton';
 import Spinner from './Spinner';
+import MvpBanner from './MvpBanner';
 
 const ROLES = [
   { value: 'TOP', label: 'Top' },
@@ -88,8 +90,11 @@ function MemberCard({
         <div className="flex items-center gap-4">
           <div className="w-6 text-center text-rose-400 font-black">#{idx + 1}</div>
           <img
-            src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/${item.member.profileIconId || 29}.png`}
-            alt="icon"
+            src={profileIconUrl(item.member.profileIconId)}
+            alt=""
+            width={48}
+            height={48}
+            decoding="async"
             className="w-12 h-12 rounded-xl border border-rose-800/40 object-cover grayscale"
           />
           <div>
@@ -156,8 +161,11 @@ function MemberCard({
 
           <div className="relative">
             <img
-              src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/${item.member.profileIconId || 29}.png`}
-              alt="icon"
+              src={profileIconUrl(item.member.profileIconId)}
+              alt=""
+              width={48}
+              height={48}
+              decoding="async"
               className="w-12 h-12 rounded-xl border border-slate-700 object-cover"
             />
             <span className="absolute -bottom-2 -right-1 text-[10px] font-bold bg-slate-800 px-1.5 py-0.5 rounded border border-slate-600 text-slate-300">
@@ -259,8 +267,12 @@ function MemberCard({
                 className="flex items-center gap-2 bg-slate-800/50 rounded-lg px-2.5 py-1.5"
               >
                 <img
-                  src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${c.championName}.png`}
-                  alt={c.championName}
+                  src={championSquareUrl(c.championName)}
+                  alt=""
+                  width={28}
+                  height={28}
+                  loading="lazy"
+                  decoding="async"
                   className="w-7 h-7 rounded-md object-cover"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
@@ -357,6 +369,10 @@ export default function SquadTab({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2 space-y-4">
+        {/* MVP de la semana: va primero, arriba de todo, porque es lo que la
+            squad viene a ver. Solo se monta cuando hay miembros para calcular. */}
+        {stats.length > 0 && <MvpBanner />}
+
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-yellow-400" />

@@ -17,6 +17,7 @@ import {
   streakLabel,
   MVP_REFERENCE,
   MVP_WEIGHTS,
+  type MvpMatchLike,
   type MvpMemberLike,
 } from '@/lib/mvp';
 
@@ -693,7 +694,7 @@ describe('computeMvp', () => {
       { info: { participants: 'no-es-un-array' } },
       { info: { participants: [] } },
       makeMatch({ created: 1000, squadWon: true }),
-    ];
+    ] as unknown as MvpMatchLike[];
 
     const result = computeMvp(matches, MEMBERS, WINDOW);
     expect(result.matchesInWindow).toBe(1);
