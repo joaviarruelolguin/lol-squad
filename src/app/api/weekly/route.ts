@@ -5,11 +5,15 @@ import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { getMatchesWithCache } from '@/lib/matchCache';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { checkRateLimit, getClientIp, rateLimitResponse, guardRead, LIMITS } from '@/lib/rateLimit';
-import { WeeklySummary, WeeklyPlayerStat } from '@/lib/types';
+import { SimpleCache } from '@/lib/cache';
+import { WeeklySummary, WeeklyPlayerStat, SquadMember } from '@/lib/types';
 import { filterMatchIdsByWindow } from '@/lib/mvp';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
+
+/** El cálculo completo se cachea 5 min: GET y POST lo comparten. */
+const STATS_TTL_MS = 5 * 60 * 1000;
 
 interface Agg {
   games: number;
@@ -25,55 +29,70 @@ interface Agg {
   wardsKilled: number;
 }
 
-export async function GET(req: Request) {
-  await connection();
+interface WeeklyStats {
+  weeks: number;
+  matchesInWindow: number;
+  playerStats: WeeklyPlayerStat[];
+}
 
-  const limited = guardRead(req, 'weekly');
-  if (limited) return limited;
+/**
+ * Estadísticas agregadas de la ventana, sin resúmenes guardados.
+ *
+ * Vive aparte del GET porque el POST la necesita para armar el prompt y antes
+ * la obtenía con `GET(new Request('http://localhost/api/weekly?weeks=N'))`.
+ * Eso tenía dos costos:
+ *
+ * 1. Re-ejecutaba el fetch de match IDs y toda la agregación en el mismo click.
+ * 2. El Request sintético no trae `x-forwarded-for`, así que `getClientIp`
+ *    devolvía 'unknown' y el GET consumía un token del bucket compartido
+ *    `read:weekly:unknown`: con 60 generaciones por minuto de toda la squad,
+ *    los usuarios se bloqueaban entre ellos.
+ */
+const statsCache = new SimpleCache<WeeklyStats>(STATS_TTL_MS);
 
-  const { searchParams } = new URL(req.url);
-  const weeks = Math.min(8, Math.max(1, Number(searchParams.get('weeks') || 4)));
+async function computeWeeklyStats(weeks: number): Promise<WeeklyStats> {
+  const cacheKey = `weekly-stats:${weeks}`;
+  const cached = statsCache.get(cacheKey);
+  if (cached) return cached;
 
   const allMembers = await getSquadMembers();
   const members = allMembers.filter(
-    (m): m is any => Boolean(m.puuid)
+    (m): m is SquadMember & { puuid: string } => Boolean(m.puuid)
   );
   const client = new RiotApiClient();
 
   if (members.length === 0) {
-    return NextResponse.json({
-      status: 'error' as const,
-      error: 'No hay miembros en la squad.',
-      summaries: [],
-    });
+    return { weeks, matchesInWindow: 0, playerStats: [] };
   }
 
-  // Recolectar matchIds recientes de todos los miembros
+  // Recolectar matchIds recientes de todos los miembros, en paralelo. En serie
+  // eran N esperas encadenadas al rate limiter global sin solapar nada.
+  const idResults = await Promise.allSettled(
+    members.map((member) =>
+      client.getMatchIdsByPuuid(
+        member.puuid,
+        getRegionalRouting(member.region),
+        MATCHES_PER_PLAYER,
+        FLEX_QUEUE
+      )
+    )
+  );
+
   const orderedMatchIds: string[] = [];
   const seen = new Set<string>();
 
-  for (const member of members) {
-    try {
-      const routing = getRegionalRouting(member.region);
-      const ids = await client.getMatchIdsByPuuid(
-        member.puuid,
-        routing,
-        MATCHES_PER_PLAYER,
-        FLEX_QUEUE
-      );
-      for (const id of ids) {
-        if (!seen.has(id)) {
-          seen.add(id);
-          orderedMatchIds.push(id);
-        }
+  for (const res of idResults) {
+    if (res.status !== 'fulfilled') continue;
+    for (const id of res.value) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        orderedMatchIds.push(id);
       }
-    } catch {
-      // ignorar
     }
   }
 
-  const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
-  const puuidToMember = new Map<string, any>(members.map((m) => [m.puuid, m]));
+  const defaultRouting = getRegionalRouting(members[0].region);
+  const puuidToMember = new Map<string, SquadMember>(members.map((m) => [m.puuid, m]));
 
   // Filtrar por ventana de tiempo
   const now = Date.now();
@@ -112,33 +131,28 @@ export async function GET(req: Request) {
   for (const { info } of cachedMatches) {
     if (!info || !Array.isArray(info.participants)) continue;
 
-      const created = info.gameCreation || 0;
-      if (created < cutoff) continue; // fuera de la ventana
+    const created = info.gameCreation || 0;
+    if (created < cutoff) continue; // fuera de la ventana
 
-      const squadPlayers = info.participants.filter((p: any) => puuidToMember.has(p.puuid));
-      if (squadPlayers.length === 0) continue;
-      matchesInWindow++;
+    const squadPlayers = info.participants.filter((p: any) => puuidToMember.has(p.puuid));
+    if (squadPlayers.length === 0) continue;
+    matchesInWindow++;
 
-      const teamDamage = new Map<number, number>();
-      for (const p of info.participants) {
-        teamDamage.set(p.teamId, (teamDamage.get(p.teamId) || 0) + (p.totalDamageDealtToChampions || 0));
-      }
-
-      for (const p of squadPlayers) {
-        const member = puuidToMember.get(p.puuid)!;
-        const a = getAgg(member.id);
-        a.games++;
-        if (p.win) a.wins++;
-        a.kills += p.kills || 0;
-        a.deaths += p.deaths || 0;
-        a.assists += p.assists || 0;
-        a.damage += p.totalDamageDealtToChampions || 0;
-        a.vision += p.visionScore || 0;
-        a.cs += (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
-        a.gold += p.goldEarned || 0;
-        a.wardsPlaced += p.wardsPlaced || 0;
-        a.wardsKilled += p.wardsKilled || 0;
-      }
+    for (const p of squadPlayers) {
+      const member = puuidToMember.get(p.puuid)!;
+      const a = getAgg(member.id);
+      a.games++;
+      if (p.win) a.wins++;
+      a.kills += p.kills || 0;
+      a.deaths += p.deaths || 0;
+      a.assists += p.assists || 0;
+      a.damage += p.totalDamageDealtToChampions || 0;
+      a.vision += p.visionScore || 0;
+      a.cs += (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
+      a.gold += p.goldEarned || 0;
+      a.wardsPlaced += p.wardsPlaced || 0;
+      a.wardsKilled += p.wardsKilled || 0;
+    }
   }
 
   // Construir stats por jugador
@@ -172,6 +186,31 @@ export async function GET(req: Request) {
   // Ordenar por winrate
   playerStats.sort((a, b) => b.winrate - a.winrate);
 
+  const result: WeeklyStats = { weeks, matchesInWindow, playerStats };
+  statsCache.set(cacheKey, result);
+  return result;
+}
+
+export async function GET(req: Request) {
+  await connection();
+
+  const limited = guardRead(req, 'weekly');
+  if (limited) return limited;
+
+  const { searchParams } = new URL(req.url);
+  const weeks = Math.min(8, Math.max(1, Number(searchParams.get('weeks') || 4)));
+
+  const allMembers = await getSquadMembers();
+  if (allMembers.length === 0) {
+    return NextResponse.json({
+      status: 'error' as const,
+      error: 'No hay miembros en la squad.',
+      summaries: [],
+    });
+  }
+
+  const stats = await computeWeeklyStats(weeks);
+
   // Consultar resúmenes guardados
   let summaries: WeeklySummary[] = [];
   if (isSupabaseConfigured()) {
@@ -190,8 +229,8 @@ export async function GET(req: Request) {
   return NextResponse.json({
     status: 'ok' as const,
     weeks,
-    matchesInWindow,
-    playerStats,
+    matchesInWindow: stats.matchesInWindow,
+    playerStats: stats.playerStats,
     summaries,
   });
 }
@@ -237,13 +276,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Reusamos la lógica del GET para obtener las stats
-    const statsRes = await GET(
-      new Request(`http://localhost/api/weekly?weeks=${weeks}`)
-    );
-    const statsJson: any = await statsRes.json();
+    // Misma función que usa el GET, con su caché de 5 min. Antes se llamaba a
+    // sí mismo con un Request sintético, lo que re-ejecutaba todo el cálculo y
+    // consumía un token del bucket de rate limit compartido por todos.
+    const statsJson = await computeWeeklyStats(weeks);
 
-    if (!statsJson?.playerStats?.length) {
+    if (!statsJson.playerStats.length) {
       return NextResponse.json(
         {
           error: 'No hay partidas suficientes en la ventana de tiempo para generar un resumen.',

@@ -81,8 +81,11 @@ export default function CompositionPanel() {
             Composiciones completas que les funcione
           </div>
           <div className="space-y-2">
-            {fullComps.slice(0, 5).map((c, i) => (
-              <div key={i} className="flex items-center gap-2 flex-wrap">
+            {fullComps.slice(0, 5).map((c) => (
+              // Clave por composición, no por posición: la lista se ordena por
+              // winrate y con key={index} React reutiliza el nodo de una fila
+              // para otra composición al reordenar.
+              <div key={c.champions.join('+')} className="flex items-center gap-2 flex-wrap">
                 <div className="flex gap-1">
                   {c.champions.map((ch) => (
                     <DDragonImage
@@ -122,9 +125,9 @@ export default function CompositionPanel() {
           Ordenado por confianza (más partidas primero). Un 100% en 2 partidas no dice nada.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {duos.slice(0, 12).map((c, i) => (
+          {duos.slice(0, 12).map((c) => (
             <div
-              key={i}
+              key={c.champions.join('+')}
               className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${
                 c.winrate >= 60
                   ? 'bg-emerald-500/10 border-emerald-500/30'

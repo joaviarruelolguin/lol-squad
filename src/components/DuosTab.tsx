@@ -115,12 +115,15 @@ export default function DuosTab({
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {duoData?.duos.map((d, index) => {
+            {duoData?.duos.map((d) => {
               const syn = synergyVisual(d.synergyRating);
 
               return (
                 <div
-                  key={index}
+                  // Clave estable por par de jugadores, no por posición: la lista
+                  // se ordena por winrate, y con key={index} React reutiliza el
+                  // DOM de una tarjeta para otro duo al reordenar.
+                  key={`${d.player1Id}|${d.player2Id}`}
                   className={`p-5 rounded-2xl border transition relative overflow-hidden bg-slate-900/40 ${syn.border}`}
                 >
                   <div className="flex items-center justify-between mb-4">

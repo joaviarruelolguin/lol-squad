@@ -18,10 +18,10 @@ export default function FreshnessBadge({
     <span
       className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
         minutes < 2
-          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
           : stale
-            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-            : 'bg-slate-800/60 text-slate-500 border-slate-700/60'
+            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+            : 'bg-slate-800/60 text-slate-300 border-slate-700/60'
       }`}
       title={
         minutes === 0

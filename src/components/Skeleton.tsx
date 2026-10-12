@@ -1,7 +1,16 @@
-/** Bloque base con el shimmer animado */
+/**
+ * Bloque base con el shimmer animado.
+ *
+ * `aria-hidden` porque es puramente decorativo: el contenedor padre ya lleva
+ * `aria-busy` y su `aria-label` ("Cargando tabla de posiciones"), y cada bloque
+ * vacío ensucia el árbol de accesibilidad del lector de pantalla.
+ */
 export function Skeleton({ className = '' }: { className?: string }) {
   return (
-    <div className={`relative overflow-hidden rounded-md bg-slate-800/60 ${className}`}>
+    <div
+      aria-hidden="true"
+      className={`relative overflow-hidden rounded-md bg-slate-800/60 ${className}`}
+    >
       <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.6s_infinite] bg-gradient-to-r from-transparent via-slate-700/40 to-transparent" />
     </div>
   );

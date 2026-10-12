@@ -109,6 +109,10 @@ export function useCachedFetch<T>(
   // Cancelar el pedido en vuelo si el componente se desmonta.
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Suscribirse a las recargas forzadas (botón "Forzar"). Sin esto, limpiar el
+  // store no llega al componente: el hook ya tenía el dato y no volvía a mirar.
+  useEffect(() => registerRefreshListener(() => load()), [load]);
+
   // Cargar solo si no hay dato fresco
   useEffect(() => {
     if (!autoFetch) return;
@@ -147,9 +151,17 @@ export function useCachedFetch<T>(
   return { data, loading, error, refresh, invalidate, fetchedAt, ttlRemaining };
 }
 
-/** Limpia toda la caché de fetch (para el botón "Forzar") */
+/**
+ * Limpia toda la caché de fetch (para el botón "Forzar") y avisa a los hooks
+ * ya montados.
+ *
+ * Antes solo borraba el store, así que si estabas en la pestaña Sinergia el
+ * botón "Forzar" no recarga TrendsPanel/TrioPanel/CompositionPanel: sus hooks
+ * ya tenían el dato en memoria y nunca volvían a mirar el store.
+ */
 export function clearAllFetchCache(): void {
   store.clear();
+  notifyAllRefresh();
 }
 
 /** Ver si algo está en caché y fresco */
@@ -159,7 +171,12 @@ export function isFresh(key: string, ttl: number): boolean {
   return Date.now() - cached.fetchedAt <= ttl;
 }
 
-/** Fuerza a todos los hooks useCachedFetch a recargar */
+/**
+ * Hooks montados que quieren enterarse de una recarga forzada.
+ *
+ * `notifyAllRefresh` se llama desde `clearAllFetchCache` (arriba), y las
+ * funciones `export function` se hoistean, así que el orden no importa acá.
+ */
 const refreshListeners = new Set<() => void>();
 
 export function registerRefreshListener(fn: () => void): () => void {
@@ -167,6 +184,7 @@ export function registerRefreshListener(fn: () => void): () => void {
   return () => refreshListeners.delete(fn);
 }
 
+/** Fuerza a todos los hooks useCachedFetch a recargar */
 export function notifyAllRefresh(): void {
   for (const fn of refreshListeners) fn();
 }

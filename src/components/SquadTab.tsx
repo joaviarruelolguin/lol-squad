@@ -17,6 +17,7 @@ import { profileIconUrl, championSquareUrl } from '@/lib/ddragonUrls';
 import { Skeleton } from './Skeleton';
 import Spinner from './Spinner';
 import MvpBanner from './MvpBanner';
+import { useConfirm } from './ConfirmDialog';
 
 const ROLES = [
   { value: 'TOP', label: 'Top' },
@@ -74,7 +75,7 @@ function MemberCard({
 }: {
   item: MemberResult;
   idx: number;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, gameName: string) => void;
 }) {
   const rank = item.flexQueue || item.soloQueue;
   const queueLabel = item.flexQueue ? 'FLEX' : item.soloQueue ? 'SOLOQ' : '';
@@ -121,11 +122,12 @@ function MemberCard({
             </div>
           </div>
           <button
-            onClick={() => onDelete(item.member.id)}
+            onClick={() => onDelete(item.member.id, item.member.gameName)}
             className="text-slate-500 hover:text-rose-400 transition p-1.5"
-            title="Eliminar"
+            title={`Sacar a ${item.member.gameName} de la squad`}
+            aria-label={`Sacar a ${item.member.gameName} de la squad`}
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -245,11 +247,12 @@ function MemberCard({
 
           {/* DELETE */}
           <button
-            onClick={() => onDelete(item.member.id)}
+            onClick={() => onDelete(item.member.id, item.member.gameName)}
             className="text-slate-500 hover:text-rose-400 transition p-1.5"
-            title="Eliminar"
+            title={`Sacar a ${item.member.gameName} de la squad`}
+            aria-label={`Sacar a ${item.member.gameName} de la squad`}
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -322,6 +325,7 @@ export default function SquadTab({
   const [region, setRegion] = useState<string>('la2');
   const [submitting, setSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -356,8 +360,14 @@ export default function SquadTab({
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Seguro que querés sacar a este manco de la squad?')) return;
+  const handleDelete = async (id: string, gameName: string) => {
+    const ok = await confirm({
+      title: `¿Sacar a ${gameName} de la squad?`,
+      description:
+        'Se le borra el Riot ID guardado y desaparece de la tabla, las sinergias y el MVP semanal. Las partidas ya cacheadas se quedan.',
+      confirmLabel: 'Sacar de la squad',
+    });
+    if (!ok) return;
     try {
       await fetch(`/api/squad?id=${id}`, { method: 'DELETE' });
       await onChanged();
@@ -556,6 +566,8 @@ export default function SquadTab({
           </form>
         </div>
       </div>
+
+      {confirmDialog}
     </div>
   );
 }

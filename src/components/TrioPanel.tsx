@@ -182,8 +182,8 @@ export default function TrioPanel() {
 
               {/* Miembros */}
               <div className="space-y-1 mb-3">
-                {t.memberNames.map((m, j) => (
-                  <div key={j} className="flex items-center gap-2">
+                {t.memberNames.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-slate-600 shrink-0" />
                     <span className="text-xs font-semibold text-slate-200 truncate">{m.name}</span>
                     {m.nickname && (

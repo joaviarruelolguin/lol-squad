@@ -14,6 +14,7 @@ import { CustomMatch, MemberResult, TableRow } from '@/lib/types';
 import SectionHeader from './SectionHeader';
 import MultiSelect from './MultiSelect';
 import Spinner from './Spinner';
+import { useConfirm } from './ConfirmDialog';
 
 interface CustomsData {
   matches: CustomMatch[];
@@ -48,6 +49,7 @@ export default function CustomsTab({
   const [winner, setWinner] = useState<'A' | 'B' | ''>('');
   const [mvp, setMvp] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   // Balanceo automático
   const [present, setPresent] = useState<string[]>([]);
@@ -132,8 +134,13 @@ export default function CustomsTab({
     }
   };
 
-  const handleDeleteMatch = async (id: string) => {
-    if (!confirm('¿Eliminar esta partida de la liga?')) return;
+  const handleDeleteMatch = async (id: string, label: string) => {
+    const ok = await confirm({
+      title: '¿Borrar esta partida de la liga?',
+      description: `${label} desaparece del historial y los puntos de la tabla se recalculan.`,
+      confirmLabel: 'Borrar partida',
+    });
+    if (!ok) return;
     try {
       await fetch(`/api/customs?id=${id}`, { method: 'DELETE' });
       await onChanged();
@@ -453,9 +460,15 @@ export default function CustomsTab({
                     )}
                   </div>
                   <button
-                    onClick={() => handleDeleteMatch(m.id)}
+                    onClick={() =>
+                      handleDeleteMatch(
+                        m.id,
+                        `${m.teamAName} vs ${m.teamBName}`
+                      )
+                    }
                     className="text-slate-500 hover:text-rose-400 transition p-1"
-                    title="Eliminar partida"
+                    title="Borrar partida"
+                    aria-label={`Borrar la partida ${m.teamAName} vs ${m.teamBName}`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -464,6 +477,8 @@ export default function CustomsTab({
           </div>
         )}
       </div>
+
+      {confirmDialog}
     </div>
   );
 }

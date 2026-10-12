@@ -28,6 +28,7 @@ import SectionHeader from '@/components/SectionHeader';
 import SquadTab from '@/components/SquadTab';
 import RiotKeyManager from '@/components/RiotKeyManager';
 import ShareButton from '@/components/ShareButton';
+import FreshnessBadge from '@/components/FreshnessBadge';
 
 type TabId = 'squad' | 'duos' | 'flex' | 'stats' | 'weekly' | 'customs';
 
@@ -96,6 +97,11 @@ export default function Home() {
   const dataAbort = useRef<AbortController | null>(null);
   const metricsAbort = useRef<AbortController | null>(null);
 
+  // Cuándo se cargó el último dato. Sirve para el badge de frescura del header:
+  // las cifras de esta app salen de la API de Riot y muchos usuarios asumen que
+  // están en vivo, así que conviene decirles de cuándo son.
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+
   const loadMetrics = useCallback(async () => {
     metricsAbort.current?.abort();
     const ctrl = new AbortController();
@@ -142,6 +148,7 @@ export default function Home() {
       setDuoData(resDuos);
       setCustoms(resCustoms);
       setCacheSize(resCache?.cachedEntries ?? null);
+      setFetchedAt(Date.now());
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') return;
       console.error(err);
@@ -241,12 +248,13 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <FreshnessBadge fetchedAt={fetchedAt} />
             {cacheSize !== null && cacheSize > 0 && (
               <span
-                className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono text-slate-500 bg-slate-800/60 border border-slate-700/60 rounded-full px-2 py-1"
+                className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 bg-slate-800/60 border border-slate-700/60 rounded-full px-2 py-1"
                 title="Entradas en caché de Riot"
               >
-                <Database className="w-3 h-3" />
+                <Database className="w-3 h-3" aria-hidden="true" />
                 {cacheSize} cache
               </span>
             )}
@@ -263,7 +271,7 @@ export default function Home() {
             <button
               onClick={handleForceRefresh}
               className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition flex items-center gap-1.5 text-sm disabled:opacity-50"
-              title="Limpia TODAS las cachés (incluida la de Riot) y vuelve a pedir todo desde cero. Lento y consume rate limit."
+              title="Limpia las cachés en memoria y vuelve a pedir todo a Riot. Lento y consume rate limit. Las partidas ya guardadas en Supabase se siguen reusando."
               aria-label="Forzar recarga desde Riot"
               disabled={forceRefreshing}
             >

@@ -288,8 +288,8 @@ export default function FlexTab({
               ? 'No pudimos completar el análisis Flex'
               : 'Análisis parcial: algunos datos no estaban disponibles'}
           </div>
-          {flexErrors.slice(0, 3).map((e, i) => (
-            <div key={i} className="text-xs text-amber-200/80 flex items-start gap-2">
+          {flexErrors.slice(0, 3).map((e) => (
+            <div key={`${e.type}-${e.message}`} className="text-xs text-amber-200/80 flex items-start gap-2">
               <span className="font-mono text-amber-400/70">[{e.type}]</span>
               <span>{e.message}</span>
             </div>
