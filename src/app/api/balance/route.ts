@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
+import { getMatchesWithCache } from '@/lib/matchCache';
 import { SquadMember } from '@/lib/types';
 import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
 import {
@@ -12,6 +13,8 @@ import {
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
+/** Cuántas partidas entran en el cálculo de poder. */
+const GAMES_PER_PLAYER = 10;
 
 interface PlayerPower {
   memberId: string;
@@ -24,6 +27,99 @@ interface PlayerPower {
   damage: number;
   vision: number;
   games: number;
+}
+
+/** Relleno para cuando no pudimos sacar ningún dato del jugador. */
+function emptyPower(member: SquadMember): PlayerPower {
+  return {
+    memberId: member.id,
+    gameName: member.gameName,
+    nickname: member.nickname,
+    role: member.role || 'FILL',
+    overall: 50,
+    winrate: 50,
+    kda: 0,
+    damage: 0,
+    vision: 0,
+    games: 0,
+  };
+}
+
+/**
+ * Poder de un jugador en sus últimas partidas Flex.
+ *
+ * Devuelve `null` solo si no se pudo ni leer el historial; si leyó pero no hay
+ * datos utilizables devuelve el poder neutro, para que el balanceador siempre
+ * reciba la misma lista de jugadores que le pidieron.
+ */
+async function computePower(
+  member: SquadMember & { puuid: string },
+  client: RiotApiClient
+): Promise<PlayerPower | null> {
+  try {
+    const routing = getRegionalRouting(member.region);
+    const ids = await client.getMatchIdsByPuuid(
+      member.puuid,
+      routing,
+      MATCHES_PER_PLAYER,
+      FLEX_QUEUE
+    );
+
+    const recent = ids.slice(0, GAMES_PER_PLAYER);
+    if (recent.length === 0) return emptyPower(member);
+
+    const matches = await getMatchesWithCache(recent, routing, false, 2);
+
+    let games = 0, wins = 0, kills = 0, deaths = 0, assists = 0;
+    let damage = 0, vision = 0;
+
+    for (const { info } of matches) {
+      if (!info || !Array.isArray(info.participants)) continue;
+      const me = info.participants.find(
+        (p: { puuid: string }) => p.puuid === member.puuid
+      );
+      if (!me) continue;
+
+      games++;
+      if (me.win) wins++;
+      kills += me.kills || 0;
+      deaths += me.deaths || 0;
+      assists += me.assists || 0;
+      damage += me.totalDamageDealtToChampions || 0;
+      vision += me.visionScore || 0;
+    }
+
+    if (games === 0) return emptyPower(member);
+
+    const winrate = Math.round((wins / games) * 100);
+    const kda = deaths === 0 ? kills + assists : (kills + assists) / deaths;
+    const avgDamage = damage / games;
+    const avgVision = vision / games;
+
+    // Score combinado 0-100
+    // WR 40% + KDA 25% + daño 20% + visión 15%
+    const overall = Math.round(
+      winrate * 0.4 +
+        Math.min(100, (kda / 4) * 100) * 0.25 +
+        Math.min(100, (avgDamage / 30000) * 100) * 0.2 +
+        Math.min(100, (avgVision / 40) * 100) * 0.15
+    );
+
+    return {
+      memberId: member.id,
+      gameName: member.gameName,
+      nickname: member.nickname,
+      role: member.role || 'FILL',
+      overall,
+      winrate,
+      kda: Math.round(kda * 100) / 100,
+      damage: Math.round(avgDamage),
+      vision: Math.round(avgVision),
+      games,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
@@ -72,99 +168,15 @@ export async function POST(req: Request) {
 
     const client = new RiotApiClient();
 
-    // Calcular poder de cada jugador seleccionado
-    const powers: PlayerPower[] = [];
-
-    for (const member of selected) {
-      try {
-        const routing = getRegionalRouting(member.region);
-        const ids = await client.getMatchIdsByPuuid(
-          member.puuid,
-          routing,
-          MATCHES_PER_PLAYER,
-          FLEX_QUEUE
-        );
-
-        let games = 0, wins = 0, kills = 0, deaths = 0, assists = 0;
-        let damage = 0, vision = 0;
-
-        for (const matchId of ids.slice(0, 10)) {
-          try {
-            const detail = await client.getMatchDetail(matchId, routing);
-            const info = detail?.info;
-            if (!info || !Array.isArray(info.participants)) continue;
-            const me = info.participants.find((p: any) => p.puuid === member.puuid);
-            if (!me) continue;
-            games++;
-            if (me.win) wins++;
-            kills += me.kills || 0;
-            deaths += me.deaths || 0;
-            assists += me.assists || 0;
-            damage += me.totalDamageDealtToChampions || 0;
-            vision += me.visionScore || 0;
-          } catch {
-            continue;
-          }
-        }
-
-        if (games === 0) {
-          powers.push({
-            memberId: member.id,
-            gameName: member.gameName,
-            nickname: member.nickname,
-            role: member.role || 'FILL',
-            overall: 50,
-            winrate: 50,
-            kda: 0,
-            damage: 0,
-            vision: 0,
-            games: 0,
-          });
-          continue;
-        }
-
-        const winrate = Math.round((wins / games) * 100);
-        const kda = deaths === 0 ? kills + assists : (kills + assists) / deaths;
-        const avgDamage = damage / games;
-        const avgVision = vision / games;
-
-        // Score combinado 0-100
-        // WR 40% + KDA 25% + daño 20% + visión 15%
-        const wrScore = winrate;
-        const kdaScore = Math.min(100, (kda / 4) * 100);
-        const dmgScore = Math.min(100, (avgDamage / 30000) * 100);
-        const visScore = Math.min(100, (avgVision / 40) * 100);
-        const overall = Math.round(
-          wrScore * 0.4 + kdaScore * 0.25 + dmgScore * 0.2 + visScore * 0.15
-        );
-
-        powers.push({
-          memberId: member.id,
-          gameName: member.gameName,
-          nickname: member.nickname,
-          role: member.role || 'FILL',
-          overall,
-          winrate,
-          kda: Math.round(kda * 100) / 100,
-          damage: Math.round(avgDamage),
-          vision: Math.round(avgVision),
-          games,
-        });
-      } catch {
-        powers.push({
-          memberId: member.id,
-          gameName: member.gameName,
-          nickname: member.nickname,
-          role: member.role || 'FILL',
-          overall: 50,
-          winrate: 50,
-          kda: 0,
-          damage: 0,
-          vision: 0,
-          games: 0,
-        });
-      }
-    }
+    // Calcular poder de cada jugador seleccionado.
+    //
+    // Los jugadores se procesan en paralelo y los detalles pasan por la caché
+    // persistente. Antes eran dos bucles anidados secuenciales: 5 jugadores x
+    // 10 partidas = 50 requests de a uno (~25s), y además NO se guardaban en
+    // match_cache, así que en el próximo cold start se repetían enteras.
+    const powers = (
+      await Promise.all(selected.map((member) => computePower(member, client)))
+    ).filter((p): p is PlayerPower => p !== null);
 
     // Ordenar por poder y repartir en dos equipos equilibrados (serpenteo)
     const sorted = [...powers].sort((a, b) => b.overall - a.overall);

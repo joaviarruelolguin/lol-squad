@@ -10,20 +10,10 @@ import {
   WeakPoint,
   FlexResult,
   SquadMember,
-  RegionalRouting,
 } from '@/lib/types';
 import { getMatchesWithCache } from '@/lib/matchCache';
+import { sortByRecency } from '@/lib/matchId';
 import { guardRead } from '@/lib/rateLimit';
-
-/**
- * Riot codifica el match id como `REGION_<epoch en segundos>` (ej: LA2_1629931414).
- * El epoch es monótono, así que comparar el sufijo numérico equivale a comparar
- * la fecha. Nos ahorra pedir el detalle de todas las partidas solo para ordenarlas.
- */
-function matchIdTime(matchId: string): number {
-  const n = Number(matchId.slice(matchId.indexOf('_') + 1));
-  return Number.isFinite(n) ? n : 0;
-}
 
 export async function GET(req: Request) {
   await connection();
@@ -99,9 +89,9 @@ export async function GET(req: Request) {
   //
   // También filtramos acá las que tienen 2+ de la squad: `matchToPuuids` ya
   // nos dice cuántos hay en cada partida sin necesidad de traer el detalle.
-  const sharedMatchIds = orderedMatchIds
-    .filter((id) => (matchToPuuids.get(id)?.size ?? 0) >= 2)
-    .sort((a, b) => matchIdTime(b) - matchIdTime(a));
+  const sharedMatchIds = sortByRecency(
+    orderedMatchIds.filter((id) => (matchToPuuids.get(id)?.size ?? 0) >= 2)
+  );
 
   // --- Paso 3: traer SOLO el detalle de esta página ---
   const total = sharedMatchIds.length;
@@ -323,14 +313,4 @@ function toErrorInfo(err: unknown): ErrorInfo {
     message: 'Error inesperado al analizar partidas Flex.',
     detail: String(err),
   };
-}
-
-// Derivar el routing regional desde el prefijo del matchId (ej: LA2_xxx)
-export function routingFromMatchId(matchId: string): RegionalRouting {
-  const prefix = matchId.split('_')[0]?.toUpperCase();
-  if (['LA1', 'LA2', 'BR1', 'NA1'].includes(prefix)) return 'americas';
-  if (['EUW1', 'EUNE', 'RU', 'TR'].includes(prefix)) return 'europe';
-  if (['JP', 'KR'].includes(prefix)) return 'asia';
-  if (['SG', 'ID', 'PH', 'TH', 'VN'].includes(prefix)) return 'sea';
-  return 'americas';
 }

@@ -89,8 +89,10 @@ export async function GET(req: Request) {
 
   let scannedMatches = 0;
 
-  // Traer todas las partidas con caché persistente: solo va a Riot las nuevas
-  const cachedMatches = await getMatchesWithCache(orderedMatchIds, defaultRouting, true, 3);
+  // Traer todas las partidas con caché persistente: solo va a Riot las nuevas.
+  // Dejamos el concurrency en su default (2): el comentario de matchCache
+  // explica por qué 3 en vuelo nos hace pasar el burst de Riot.
+  const cachedMatches = await getMatchesWithCache(orderedMatchIds, defaultRouting, true);
 
   for (const { info, timeline } of cachedMatches) {
     if (!info || !Array.isArray(info.participants)) continue;

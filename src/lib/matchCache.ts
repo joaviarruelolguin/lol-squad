@@ -1,5 +1,6 @@
 import { getSupabase, isSupabaseConfigured } from './supabase';
 import { RiotApiClient } from './riot';
+import { routingFromMatchId } from './matchId';
 import { RegionalRouting } from './types';
 
 interface CachedMatch {
@@ -18,83 +19,6 @@ interface CachedMatch {
  * Sin Supabase configurado, funciona como passthrough (solo caché en memoria
  * del RiotApiClient).
  */
-export async function getMatchWithCache(
-  matchId: string,
-  routing: RegionalRouting,
-  withTimeline = false
-): Promise<CachedMatch | null> {
-  if (!isSupabaseConfigured()) {
-    const client = new RiotApiClient();
-    const detail = await client.getMatchDetail(matchId, routing);
-    if (!detail?.info) return null;
-    let timeline = null;
-    if (withTimeline) {
-      try {
-        timeline = await client.getMatchTimeline(matchId, routing);
-      } catch {
-        timeline = null;
-      }
-    }
-    return { matchId, info: detail.info, timeline };
-  }
-
-  const supabase = getSupabase();
-
-  // 1. Buscar en caché
-  const { data: cached } = await supabase
-    .from('match_cache')
-    .select('match_id, detail, timeline')
-    .eq('match_id', matchId)
-    .maybeSingle();
-
-  if (cached) {
-    const detail = typeof cached.detail === 'string' ? JSON.parse(cached.detail) : cached.detail;
-    if (detail) {
-      let timeline = null;
-      if (withTimeline) {
-        timeline = typeof cached.timeline === 'string' ? JSON.parse(cached.timeline) : cached.timeline;
-      }
-      return { matchId, info: detail?.info || detail, timeline };
-    }
-  }
-
-  // 2. No está en caché: pedir a Riot y guardar
-  const client = new RiotApiClient();
-  const detail = await client.getMatchDetail(matchId, routing);
-  if (!detail?.info) return null;
-
-  let timeline = null;
-  if (withTimeline) {
-    try {
-      timeline = await client.getMatchTimeline(matchId, routing);
-    } catch {
-      timeline = null;
-    }
-  }
-
-  // 3. Persistir para no volver a pedirlo
-  try {
-    await supabase.from('match_cache').upsert(
-      {
-        match_id: matchId,
-        detail,
-        timeline: timeline ? { info: timeline.info } : null,
-        fetched_at: new Date().toISOString(),
-      },
-      { onConflict: 'match_id' }
-    );
-  } catch (err) {
-    // Si falla el guardado, seguimos igual (solo perdemos caché, no datos)
-    console.warn('match_cache upsert failed:', err);
-  }
-
-  return { matchId, info: detail.info, timeline };
-}
-
-/**
- * Igual que getMatchWithCache pero para varias partidas.
- * Las que ya están en caché se resuelven sin tocar Riot.
- */
 export async function getMatchesWithCache(
   matchIds: string[],
   routing: RegionalRouting,
@@ -112,16 +36,23 @@ export async function getMatchesWithCache(
   // veces lo mismo.
   const uniqueIds = [...new Set(matchIds)];
 
+  // Cada partida se pide con el routing de SU prefijo, no con el que pasó el
+  // llamador (que era el del primer miembro de la squad). Con un jugador de
+  // EUW1 en el grupo, pedir su `EUW1_...` a `americas` da 404, se agotan los
+  // reintentos y la partida desaparece en silencio del análisis.
+  const routingFor = (id: string): RegionalRouting => routingFromMatchId(id) || routing;
+
   // Sin Supabase no hay caché persistente, pero igual conviene pedir en
   // lote con concurrencia acotada: el limiter global serializa a 2 req/s,
   // pero las esperas se solapan y no pagamos el reintento uno por uno.
   const fetchOne = async (id: string): Promise<CachedMatch | null> => {
-    const detail = await client.getMatchDetail(id, routing);
+    const route = routingFor(id);
+    const detail = await client.getMatchDetail(id, route);
     if (!detail?.info) return null;
     let timeline = null;
     if (withTimeline) {
       try {
-        timeline = await client.getMatchTimeline(id, routing);
+        timeline = await client.getMatchTimeline(id, route);
       } catch {
         timeline = null;
       }
@@ -177,13 +108,21 @@ export async function getMatchesWithCache(
   const before = results.length;
   await runBatched(missing);
 
-  // Persistir las que acabamos de traer
-  const toStore = results.slice(before).map((m) => ({
-    match_id: m.matchId,
-    detail: { info: m.info },
-    timeline: m.timeline ? { info: m.timeline.info } : null,
-    fetched_at: new Date().toISOString(),
-  }));
+  // Persistir las que acabamos de traer.
+  //
+  // Nunca escribimos `timeline: null`: /api/trends pide las partidas con
+  // timeline y /api/weekly las pide sin. Si corren en paralelo y la segunda
+  // escribe última, borra el timeline que la primera recién cacheó, y la
+  // próxima vez que Trends abra se vuelve a pagar el request.
+  const toStore = results.slice(before).map((m) => {
+    const row: Record<string, unknown> = {
+      match_id: m.matchId,
+      detail: { info: m.info },
+      fetched_at: new Date().toISOString(),
+    };
+    if (m.timeline) row.timeline = { info: m.timeline.info };
+    return row;
+  });
 
   if (toStore.length > 0) {
     try {
@@ -202,40 +141,4 @@ function orderBy(matchIds: string[], results: CachedMatch[]): CachedMatch[] {
   return results.sort(
     (a, b) => (order.get(a.matchId) ?? 0) - (order.get(b.matchId) ?? 0)
   );
-}
-
-/** Estadísticas de la caché (para mostrarlas en la UI) */
-export async function getCacheStats(): Promise<{
-  totalMatches: number;
-  oldestFetch: string | null;
-  newestFetch: string | null;
-}> {
-  if (!isSupabaseConfigured()) {
-    return { totalMatches: 0, oldestFetch: null, newestFetch: null };
-  }
-  try {
-    const { count } = await getSupabase()
-      .from('match_cache')
-      .select('match_id', { count: 'exact', head: true });
-
-    const { data } = await getSupabase()
-      .from('match_cache')
-      .select('fetched_at')
-      .order('fetched_at', { ascending: true })
-      .limit(1);
-
-    const { data: newest } = await getSupabase()
-      .from('match_cache')
-      .select('fetched_at')
-      .order('fetched_at', { ascending: false })
-      .limit(1);
-
-    return {
-      totalMatches: count || 0,
-      oldestFetch: data?.[0]?.fetched_at || null,
-      newestFetch: newest?.[0]?.fetched_at || null,
-    };
-  } catch {
-    return { totalMatches: 0, oldestFetch: null, newestFetch: null };
-  }
 }

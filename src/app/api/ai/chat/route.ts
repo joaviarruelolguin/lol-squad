@@ -43,7 +43,7 @@ function optionalChatHistory(value: unknown): ValidationResult<
   }
   return { ok: true, value: out };
 }
-import { routingFromMatchId } from '@/app/api/flex-matches/route';
+import { routingFromMatchId } from '@/lib/matchId';
 
 export async function POST(req: Request) {
   await connection();

@@ -6,6 +6,7 @@ import { getMatchesWithCache } from '@/lib/matchCache';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { checkRateLimit, getClientIp, rateLimitResponse, guardRead, LIMITS } from '@/lib/rateLimit';
 import { WeeklySummary, WeeklyPlayerStat } from '@/lib/types';
+import { filterMatchIdsByWindow } from '@/lib/mvp';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
@@ -79,6 +80,17 @@ export async function GET(req: Request) {
   const windowMs = weeks * 7 * 24 * 60 * 60 * 1000;
   const cutoff = now - windowMs;
 
+  // Recorte por fecha ANTES de bajar los detalles. El ID de Riot trae la hora
+  // de arranque adentro, así que esto evita pedir ~100 partidas para descartar
+  // ~90. Con weeks=1 el trabajo real baja de ~100 requests a ~10.
+  const inWindow = filterMatchIdsByWindow(orderedMatchIds, {
+    start: cutoff,
+    end: now,
+    renewsAt: now,
+    kind: 'rolling',
+    days: weeks * 7,
+  });
+
   const aggs = new Map<string, Agg>();
   const getAgg = (id: string): Agg => {
     if (!aggs.has(id)) {
@@ -94,7 +106,8 @@ export async function GET(req: Request) {
 
   // Traemos las partidas con la caché persistente: solo va a Riot lo que falta.
   // No necesitamos timeline para el resumen semanal, así que lo saltamos.
-  const cachedMatches = await getMatchesWithCache(orderedMatchIds, defaultRouting, false, 3);
+  // El concurrency queda en su default (2) por lo que dice matchCache.
+  const cachedMatches = await getMatchesWithCache(inWindow, defaultRouting, false);
 
   for (const { info } of cachedMatches) {
     if (!info || !Array.isArray(info.participants)) continue;

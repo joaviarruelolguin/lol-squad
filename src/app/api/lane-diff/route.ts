@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { getSquadMembers } from '@/lib/storage';
-import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
+import { getRegionalRouting } from '@/lib/riot';
+import { guardRead } from '@/lib/rateLimit';
+import { getMatchesWithCache } from '@/lib/matchCache';
+import { isValidMatchId } from '@/lib/matchId';
 import { SquadMember, LaneDiffResult, LaneDiffPlayer } from '@/lib/types';
 
 // Minutos en los que sacamos el diferencial
@@ -9,6 +12,14 @@ const CHECKPOINTS = [10, 15];
 
 export async function GET(req: Request) {
   await connection();
+
+  // Este era el único endpoint que llamaba a Riot sin guard. Acepta un matchId
+  // arbitrario y hace 2 requests por invocación (detalle + timeline), así que
+  // un curl en loop con IDs al azar quemaba la cuota de Riot del grupo entero:
+  // cada 429 dispara `penalize()` global, que frena la cola de TODOS los
+  // endpoints legítimos.
+  const limited = guardRead(req, 'lane-diff');
+  if (limited) return limited;
 
   const { searchParams } = new URL(req.url);
   const matchId = searchParams.get('matchId');
@@ -20,42 +31,34 @@ export async function GET(req: Request) {
     );
   }
 
+  // Corta strings arbitrarios antes de que el matchId llegue a la URL de Riot.
+  if (!isValidMatchId(matchId)) {
+    return NextResponse.json(
+      { error: 'El matchId no tiene un formato válido.' },
+      { status: 400 }
+    );
+  }
+
   const allMembers = await getSquadMembers();
   const members = allMembers.filter(
     (m): m is SquadMember & { puuid: string } => Boolean(m.puuid)
   );
-  const client = new RiotApiClient();
 
-  const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
+  const routing = getRegionalRouting(members[0]?.region ?? 'la2');
   const puuidToMember = new Map<string, SquadMember>(
     members.map((m) => [m.puuid, m])
   );
 
-  // Traer detalle (para saber el equipo y la duración)
-  let info: any;
-  try {
-    const detail = await client.getMatchDetail(matchId, defaultRouting);
-    info = detail?.info;
-  } catch (err) {
-    return NextResponse.json(
-      { error: 'No se pudo cargar la partida.' },
-      { status: 400 }
-    );
-  }
+  // Pasamos por la caché persistente: el timeline pesa mucho y sin esto cada
+  // click volvía a pagar los 2 requests aunque la partida ya estuviera en
+  // match_cache (que es donde la guardan /api/trends y /api/weekly).
+  const [cached] = await getMatchesWithCache([matchId], routing, true, 1);
+  const info = cached?.info;
+  const timeline = cached?.timeline ?? null;
+
   if (!info || !Array.isArray(info.participants)) {
     return NextResponse.json(
-      { error: 'Partida sin datos válidos.' },
-      { status: 400 }
-    );
-  }
-
-  // Traer timeline
-  let timeline: any;
-  try {
-    timeline = await client.getMatchTimeline(matchId, defaultRouting);
-  } catch (err) {
-    return NextResponse.json(
-      { error: 'No se pudo cargar el timeline de la partida.' },
+      { error: 'No se pudo cargar la partida.' },
       { status: 400 }
     );
   }

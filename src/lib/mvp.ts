@@ -1,4 +1,8 @@
 import type { MvpEntry, MvpScoreBreakdown, MvpWindow } from './types';
+import { matchIdTimestamp } from './matchId';
+
+// Reexportado por comodidad: los tests y el endpoint usan el nombre largo.
+export { matchIdTimestamp as matchIdToTimestamp };
 
 /**
  * MVP Semanal: coronamos al mejor jugador de la squad en una ventana de 7 días.
@@ -78,34 +82,19 @@ export function isUsableWindow(matchesInWindow: number): boolean {
 // Match IDs → timestamp (sin pedir el detalle de la partida)
 // ============================================================
 
+// `matchIdTimestamp` vive en `lib/matchId.ts`, compartida con flex-matches, y
+// se reexporta arriba porque el filtro por ventana es parte de la API pública
+// de este módulo.
+
 /**
- * Riot codifica la hora de arranque en el propio match ID (`LA2_6801234567`),
- * así que podemos descartar las partidas viejas por fecha SIN pedirle el detalle
- * a la API. Sin esto, coronamos el MVP trayendo ~40 partidas de las cuales
- * quizá 4 caen en la ventana.
+ * ¿La partida cayó dentro de la ventana?
  *
- * Devuelve `null` si el formato no es el esperado, y en ese caso la partida se
- * conserva (filtrar por fecha es una optimización, nunca una fuente de pérdida).
+ * Si el ID no tiene el formato esperado no se puede saber, y en ese caso la
+ * dejamos pasar: filtrar por fecha es una optimización, nunca una fuente de
+ * pérdida de datos.
  */
-export function matchIdToTimestamp(matchId: string): number | null {
-  const sep = matchId.lastIndexOf('_');
-  if (sep < 0) return null;
-
-  const raw = matchId.slice(sep + 1);
-  // Sin parseo entero estricto: "12e3" sería Number() = 12000.
-  if (!/^\d{1,15}$/.test(raw)) return null;
-
-  const seconds = Number(raw);
-  // Riot usa unix en segundos. Los cortes descartan tanto timestamps en
-  // milisegundos (13 dígitos, ~1.7e12) como basura numérica.
-  if (!Number.isFinite(seconds) || seconds < 1e9 || seconds > 1e11) return null;
-
-  return seconds * 1000;
-}
-
-/** ¿La partida cayó dentro de la ventana? Si no se puede saber, la dejamos pasar. */
 export function isInWindow(matchId: string, window: MvpWindow): boolean {
-  const ts = matchIdToTimestamp(matchId);
+  const ts = matchIdTimestamp(matchId);
   if (ts === null) return true;
   return ts >= window.start && ts <= window.end;
 }

@@ -151,7 +151,12 @@ const TTL = {
   summoner: 60 * 60 * 1000,       // 1h: icono/nivel
   league: 5 * 60 * 1000,          // 5min: rangos y LP cambian seguido
   mastery: 30 * 60 * 1000,        // 30min: maestría
-  matchIds: 2 * 60 * 1000,        // 2min: el historial crece
+  // 15min y no 2min. Este era el mayor generador de cascadas de 429: los IDs
+  // vencían cada 2 minutos, pero los DETALLES duran 24h. Cada vencimiento
+  // re-disparaba los ~100 fetches de detalle de toda la app, más los timelines
+  // de /api/trends, y cada 429 frenaba la cola global entera. A la squad no le
+  // aporta nada ver una partida nueva antes de los 15 minutos.
+  matchIds: 15 * 60 * 1000,
   matchDetail: 24 * 60 * 60 * 1000, // 24h: una partida terminada NUNCA cambia
 };
 
