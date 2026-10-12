@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
-import { getSquadMembers } from '@/lib/storage';
-import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
-import { SquadMember, TrioResult, TrioStat } from '@/lib/types';
+import { TrioResult, TrioStat } from '@/lib/types';
 import { trioSynergyRating } from '@/lib/synergy';
-import { getMatchesWithCache } from '@/lib/matchCache';
+import { getSquadMatchSet } from '@/lib/squadMatches';
 import { guardRead } from '@/lib/rateLimit';
 
 const MATCHES_PER_PLAYER = 20;
@@ -18,12 +16,14 @@ export async function GET(req: Request) {
   const limited = guardRead(req, 'trios');
   if (limited) return limited;
 
-  const allMembers = await getSquadMembers();
-  const members = allMembers.filter(
-    (m): m is SquadMember & { puuid: string } => Boolean(m.puuid)
-  );
-  const client = new RiotApiClient();
-  const errors: ErrorInfo[] = [];
+  // Historial Flex de la squad, compartido con duos, composition, trends y
+  // player-metrics. minSquadMembers filtra por 3+ sin bajar el detalle de las
+  // que no pueden formar un trío.
+  const { matches, errors, members } = await getSquadMatchSet({
+    matchesPerPlayer: MATCHES_PER_PLAYER,
+    queue: FLEX_QUEUE,
+    minSquadMembers: 3,
+  });
 
   if (members.length < 3) {
     return NextResponse.json({
@@ -34,76 +34,41 @@ export async function GET(req: Request) {
     } as TrioResult);
   }
 
-  // Obtener matchIds
-  const orderedMatchIds: string[] = [];
-  const seen = new Set<string>();
-
-  for (const member of members) {
-    try {
-      const routing = getRegionalRouting(member.region);
-      const ids = await client.getMatchIdsByPuuid(
-        member.puuid,
-        routing,
-        MATCHES_PER_PLAYER,
-        FLEX_QUEUE
-      );
-      for (const id of ids) {
-        if (!seen.has(id)) {
-          seen.add(id);
-          orderedMatchIds.push(id);
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error) errors.push({ type: 'NETWORK_ERROR' as const, message: err.message });
-    }
-  }
-
-  const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
-  const puuidToMember = new Map<string, SquadMember>(members.map((m) => [m.puuid, m]));
-
   // Agregador de tríos: clave = ids ordenados de los 3 miembros
   const trioAgg = new Map<string, { wins: number; games: number; dates: number[] }>();
+  const memberById = new Map(members.map((m) => [m.id, m]));
 
   let scannedMatches = 0;
 
-  // Pedimos todos los detalles en un lote: los que ya están en match_cache
-  // no tocan Riot, y los que faltan van con concurrencia acotada en vez de
-  // uno por uno (que a 2 req/s convertía este endpoint en 20 segundos).
-  const details = await getMatchesWithCache(orderedMatchIds, defaultRouting);
+  for (const match of matches) {
+    const squadPlayers = match.squadParticipants;
+    if (squadPlayers.length < 3) continue;
+    scannedMatches++;
 
-  for (const { info } of details) {
-    try {
-      if (!info || !Array.isArray(info.participants)) continue;
+    const squadWon = squadPlayers[0]?.win ?? false;
 
-      const squadPlayers = info.participants.filter((p: any) => puuidToMember.has(p.puuid));
-      if (squadPlayers.length < 3) continue;
-      scannedMatches++;
+    // Todos los sub-tríos de la partida (combinaciones de 3)
+    for (let i = 0; i < squadPlayers.length; i++) {
+      for (let j = i + 1; j < squadPlayers.length; j++) {
+        for (let k = j + 1; k < squadPlayers.length; k++) {
+          const ids = [
+            squadPlayers[i].squadMemberId,
+            squadPlayers[j].squadMemberId,
+            squadPlayers[k].squadMemberId,
+          ]
+            .filter(Boolean)
+            .sort() as string[];
+          const key = ids.join('|');
 
-      const squadWon = squadPlayers[0]?.win ?? false;
-      const gameCreation = info.gameCreation || 0;
-
-      // Generar todos los sub-tríos de la partida (combinaciones de 3)
-      for (let i = 0; i < squadPlayers.length; i++) {
-        for (let j = i + 1; j < squadPlayers.length; j++) {
-          for (let k = j + 1; k < squadPlayers.length; k++) {
-            const trio = [squadPlayers[i], squadPlayers[j], squadPlayers[k]];
-            const ids = trio
-              .map((p: any) => puuidToMember.get(p.puuid)!.id)
-              .sort();
-            const key = ids.join('|');
-
-            if (!trioAgg.has(key)) {
-              trioAgg.set(key, { wins: 0, games: 0, dates: [] });
-            }
-            const t = trioAgg.get(key)!;
-            t.games++;
-            if (squadWon) t.wins++;
-            t.dates.push(gameCreation);
+          if (!trioAgg.has(key)) {
+            trioAgg.set(key, { wins: 0, games: 0, dates: [] });
           }
+          const t = trioAgg.get(key)!;
+          t.games++;
+          if (squadWon) t.wins++;
+          t.dates.push(match.created);
         }
       }
-    } catch {
-      // ignorar
     }
   }
 
@@ -113,7 +78,7 @@ export async function GET(req: Request) {
     if (data.games < MIN_GAMES) continue;
     const ids = key.split('|');
     const memberNames = ids.map((id) => {
-      const m = members.find((mm) => mm.id === id);
+      const m = memberById.get(id);
       return { id, name: m?.gameName || 'Desconocido', nickname: m?.nickname };
     });
     const winrate = Math.round((data.wins / data.games) * 100);
@@ -126,7 +91,7 @@ export async function GET(req: Request) {
       wins: data.wins,
       losses: data.games - data.wins,
       winrate,
-      synergyRating: synergyRating(winrate, data.games),
+      synergyRating: trioSynergyRating(winrate, data.games),
       lastPlayed,
     });
   }
@@ -143,11 +108,4 @@ export async function GET(req: Request) {
     trios,
     scannedMatches,
   } as TrioResult);
-}
-
-function synergyRating(
-  winrate: number,
-  games: number
-): TrioStat['synergyRating'] {
-  return trioSynergyRating(winrate, games);
 }

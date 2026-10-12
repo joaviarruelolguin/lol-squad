@@ -1,16 +1,12 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
-import { getSquadMembers } from '@/lib/storage';
-import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
-import {
-  SquadMember,
-  FlexPlayer,
-  PlayerMetrics,
-  PlayerMetricsResult,
-} from '@/lib/types';
-import { getMatchesWithCache } from '@/lib/matchCache';
+import { PlayerMetrics, PlayerMetricsResult } from '@/lib/types';
+import { getSquadMatchSet } from '@/lib/squadMatches';
 import { guardRead } from '@/lib/rateLimit';
+
+const FLEX_QUEUE = 440;
+const MATCHES_PER_PLAYER = 20;
 
 export async function GET(req: Request) {
   await connection();
@@ -18,15 +14,13 @@ export async function GET(req: Request) {
   const limited = guardRead(req, 'player-metrics');
   if (limited) return limited;
 
-  const allMembers = await getSquadMembers();
-  const members = allMembers.filter(
-    (m): m is SquadMember & { puuid: string } => Boolean(m.puuid)
-  );
-  const client = new RiotApiClient();
-  const errors: ErrorInfo[] = [];
-
-  const FLEX_QUEUE = 440;
-  const MATCHES_PER_PLAYER = 20;
+  // El historial Flex de la squad es el mismo dataset que usan duos, trios,
+  // composition y trends: pedirlo por acá los comparte en vez de repetir los
+  // pedidos a Riot, el SELECT sobre match_cache y el parseo de ~100 partidas.
+  const { matches, errors, members } = await getSquadMatchSet({
+    matchesPerPlayer: MATCHES_PER_PLAYER,
+    queue: FLEX_QUEUE,
+  });
 
   if (members.length === 0) {
     return NextResponse.json({
@@ -41,37 +35,6 @@ export async function GET(req: Request) {
       totalMatchesAnalyzed: 0,
     } as PlayerMetricsResult);
   }
-
-  // --- Obtener todos los matchIds de los miembros ---
-  const orderedMatchIds: string[] = [];
-  const seen = new Set<string>();
-
-  for (const member of members) {
-    try {
-      const routing = getRegionalRouting(member.region);
-      const ids = await client.getMatchIdsByPuuid(
-        member.puuid,
-        routing,
-        MATCHES_PER_PLAYER,
-        FLEX_QUEUE
-      );
-      for (const id of ids) {
-        if (!seen.has(id)) {
-          seen.add(id);
-          orderedMatchIds.push(id);
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error) {
-        errors.push({ type: 'NETWORK_ERROR', message: err.message });
-      }
-    }
-  }
-
-  const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
-  const puuidToMember = new Map<string, SquadMember>(
-    members.map((m) => [m.puuid, m])
-  );
 
   // --- Agregadores por miembro ---
   interface Agg {
@@ -112,89 +75,36 @@ export async function GET(req: Request) {
 
   let totalMatchesAnalyzed = 0;
 
-  // --- Un solo pass: obtener detalle y agregar todo ---
-  // Los detalles van en lote: lo que ya está en match_cache no toca Riot, y
-  // lo que falta se pide con concurrencia acotada en vez de uno por uno.
-  const details = await getMatchesWithCache(orderedMatchIds, defaultRouting);
+  for (const match of matches) {
+    if (match.squadParticipants.length === 0) continue;
+    totalMatchesAnalyzed++;
 
-  for (const { info } of details) {
-    try {
-      if (!info || !Array.isArray(info.participants)) continue;
+    const durationMin = match.duration / 60;
 
-      const duration = info.gameDuration || 1;
+    for (const p of match.squadParticipants) {
+      const agg = getAgg(p.squadMemberId!);
+      agg.games++;
+      if (p.win) agg.wins++;
+      agg.kills += p.kills;
+      agg.deaths += p.deaths;
+      agg.assists += p.assists;
+      agg.damage += p.totalDamageDealtToChampions;
+      agg.vision += p.visionScore;
+      agg.cs += p.cs;
+      agg.gold += p.goldEarned;
 
-      const players: FlexPlayer[] = info.participants.map((p: any) => {
-        const squadMember = puuidToMember.get(p.puuid);
-        return {
-          puuid: p.puuid,
-          riotIdGameName: p.riotIdGameName || 'Desconocido',
-          riotIdTagline: p.riotIdTagline || '',
-          squadMemberId: squadMember?.id,
-          squadNickname: squadMember?.nickname,
-          championId: p.championId,
-          championName: p.championName || 'Unknown',
-          teamId: p.teamId,
-          win: p.win,
-          kills: p.kills,
-          deaths: p.deaths,
-          assists: p.assists,
-          totalDamageDealtToChampions: p.totalDamageDealtToChampions,
-          physicalDamage: p.physicalDamageDealtToChampions,
-          magicDamage: p.magicDamageDealt,
-          trueDamage: p.trueDamageDealt,
-          totalDamageTaken: p.totalDamageTaken,
-          goldEarned: p.goldEarned,
-          // El CS de jungla viene de los camp (neutralMinionsKilled). Sin esto
-          // los jungleres figuraban con su CS de lane nomás (tipo 33 en vez de
-          // 150+), muy por debajo de lo que muestran Semanal/Tendencias.
-          cs: (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0),
-          visionScore: p.visionScore,
-          wardsPlaced: p.wardsPlaced,
-          wardsKilled: p.wardsKilled,
-          damageDealtToObjectives: p.damageDealtToObjectives,
-          role: p.role,
-          lane: p.lane,
-        };
-      });
+      // Damage share y vision por minuto
+      const teamTotal = match.teamDamage.get(p.teamId) || 1;
+      agg.damageShare += p.totalDamageDealtToChampions / teamTotal;
+      agg.visionPerMinute += p.visionScore / (durationMin || 1);
 
-      // Solo contar la partida si tiene al menos 1 miembro de la squad
-      const squadPlayers = players.filter((p) => p.squadMemberId);
-      if (squadPlayers.length === 0) continue;
-      totalMatchesAnalyzed++;
-
-      // Suma total de daño del equipo para calcular share
-      const teamDamage = new Map<number, number>();
-      for (const p of players) {
-        teamDamage.set(p.teamId, (teamDamage.get(p.teamId) || 0) + p.totalDamageDealtToChampions);
+      const champs = agg.champions;
+      if (!champs.has(p.championName)) {
+        champs.set(p.championName, { games: 0, wins: 0 });
       }
-
-      for (const p of squadPlayers) {
-        const agg = getAgg(p.squadMemberId!);
-        agg.games++;
-        if (p.win) agg.wins++;
-        agg.kills += p.kills;
-        agg.deaths += p.deaths;
-        agg.assists += p.assists;
-        agg.damage += p.totalDamageDealtToChampions;
-        agg.vision += p.visionScore;
-        agg.cs += p.cs;
-        agg.gold += p.goldEarned;
-
-        // Damage share y vision por minuto
-        const teamTotal = teamDamage.get(p.teamId) || 1;
-        agg.damageShare += p.totalDamageDealtToChampions / teamTotal;
-        agg.visionPerMinute += p.visionScore / (duration / 60);
-
-        const champs = agg.champions;
-        if (!champs.has(p.championName)) {
-          champs.set(p.championName, { games: 0, wins: 0 });
-        }
-        const c = champs.get(p.championName)!;
-        c.games++;
-        if (p.win) c.wins++;
-      }
-    } catch {
-      // silencioso: una partida no disponible no rompe el agregado
+      const c = champs.get(p.championName)!;
+      c.games++;
+      if (p.win) c.wins++;
     }
   }
 

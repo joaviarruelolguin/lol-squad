@@ -18,6 +18,21 @@ interface Bucket {
 
 const buckets = new Map<string, Bucket>();
 
+// Barro los buckets vencidos cada minuto. Antes la limpieza solo corria dentro de
+// checkRateLimit y unicamente en la rama que crea un bucket nuevo: con muchas
+// IPs distintas (NAT, proxies, usuarios en movil) el Map llegaba a 1000 entradas
+// sin que la limpieza se llegara a disparar nunca, porque las peticiones
+// siguientes siempre caian en la rama de "ya existe".
+// unref() para que este timer no mantenga vivo el proceso en Node.
+const sweep = setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of buckets) {
+    if (now >= bucket.resetAt) buckets.delete(key);
+  }
+}, 60_000);
+
+sweep.unref?.();
+
 export interface RateLimitResult {
   ok: boolean;
   remaining: number;
@@ -39,12 +54,7 @@ export function checkRateLimit(
 
   if (!bucket || now >= bucket.resetAt) {
     buckets.set(key, { count: 1, resetAt: now + windowMs });
-    // Limpieza periódica para no crecer sin límite
-    if (buckets.size > 1000) {
-      for (const [k, v] of buckets) {
-        if (now >= v.resetAt) buckets.delete(k);
-      }
-    }
+    // Limpieza periodica: la hace el timer de barrido de arriba.
     // El primer request también tiene que respetar el límite: con limit 0
     // esta función tiene que bloquear, no dejar pasar de a uno.
     return {

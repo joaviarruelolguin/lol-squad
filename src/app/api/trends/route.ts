@@ -1,14 +1,24 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
-import { getSquadMembers } from '@/lib/storage';
-import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
-import { getMatchesWithCache } from '@/lib/matchCache';
 import { SquadMember, TrendResult, PlayerTrend } from '@/lib/types';
+import { getSquadMatchSet } from '@/lib/squadMatches';
+import { getMatchesWithCache } from '@/lib/matchCache';
+import { getRegionalRouting } from '@/lib/riot';
 import { guardRead } from '@/lib/rateLimit';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
 const MIN_TREND_GAMES = 5;
+
+/**
+ * Cuántas partidas pedir timeline.
+ *
+ * El timeline es un request extra por partida y solo lo usan los minutos de
+ * muerte. Pedirlo para las ~100 partidas del historial sonaba a +100 requests que
+ * ningún otro endpoint aprovecha. Con las 20 más recientes hay muestra de sobra
+ * para detectar en qué franja del juego se efectúan las muertes.
+ */
+const TIMELINE_LIMIT = 20;
 
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
@@ -48,10 +58,14 @@ export async function GET(req: Request) {
   const limited = guardRead(req, 'trends');
   if (limited) return limited;
 
-  const allMembers = await getSquadMembers();
-  const members = allMembers.filter(
-    (m): m is SquadMember & { puuid: string } => Boolean(m.puuid)
-  );
+  // Historial Flex de la squad, compartido con duos, trios, composition y
+  // player-metrics: los pedidos a Riot, el SELECT sobre match_cache y el parseo
+  // de las partidas se hacen una sola vez.
+  const squad = await getSquadMatchSet({
+    matchesPerPlayer: MATCHES_PER_PLAYER,
+    queue: FLEX_QUEUE,
+  });
+  const { members } = squad;
 
   if (members.length === 0) {
     return NextResponse.json({
@@ -62,25 +76,8 @@ export async function GET(req: Request) {
     } as TrendResult);
   }
 
-  const client = new RiotApiClient();
-  const puuidToMember = new Map<string, SquadMember>(members.map((m) => [m.puuid, m]));
+  const puuidToMember = squad.puuidToMember;
 
-  // Recolectar matchIds
-  const orderedMatchIds: string[] = [];
-  const seen = new Set<string>();
-  for (const member of members) {
-    try {
-      const routing = getRegionalRouting(member.region);
-      const ids = await client.getMatchIdsByPuuid(
-        member.puuid, routing, MATCHES_PER_PLAYER, FLEX_QUEUE
-      );
-      for (const id of ids) {
-        if (!seen.has(id)) { seen.add(id); orderedMatchIds.push(id); }
-      }
-    } catch { /* ignorar */ }
-  }
-
-  const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
   const aggs = new Map<string, Agg>();
   const getAgg = (id: string): Agg => {
     if (!aggs.has(id)) aggs.set(id, newAgg());
@@ -89,69 +86,73 @@ export async function GET(req: Request) {
 
   let scannedMatches = 0;
 
-  // Traer todas las partidas con caché persistente: solo va a Riot las nuevas.
-  // Dejamos el concurrency en su default (2): el comentario de matchCache
-  // explica por qué 3 en vuelo nos hace pasar el burst de Riot.
-  const cachedMatches = await getMatchesWithCache(orderedMatchIds, defaultRouting, true);
+  // Timeline solo para las partidas más recientes (ver TIMELINE_LIMIT).
+  const recentIds = squad.matches
+    .slice(0, TIMELINE_LIMIT)
+    .map((m) => m.matchId);
+  const timelineByMatch = new Map<string, any>();
+  if (recentIds.length > 0) {
+    const withTimeline = await getMatchesWithCache(
+      recentIds,
+      getRegionalRouting(members[0].region),
+      true
+    );
+    for (const { matchId, timeline } of withTimeline) {
+      if (timeline) timelineByMatch.set(matchId, timeline);
+    }
+  }
 
-  for (const { info, timeline } of cachedMatches) {
-    if (!info || !Array.isArray(info.participants)) continue;
-
-    const squadPlayers = info.participants.filter((p: any) => puuidToMember.has(p.puuid));
-    if (squadPlayers.length === 0) continue;
+  for (const match of squad.matches) {
+    if (match.squadParticipants.length === 0) continue;
     scannedMatches++;
 
-    const created = info.gameCreation || 0;
-    const durationMin = (info.gameDuration || 0) / 60;
-    const hour = new Date(created).getHours();
-    const dayOfWeek = new Date(created).getDay();
+    const durationMin = match.duration / 60;
+    const hour = new Date(match.created).getHours();
+    const dayOfWeek = new Date(match.created).getDay();
 
-    for (const p of squadPlayers) {
-      const member = puuidToMember.get(p.puuid)!;
-      const a = getAgg(member.id);
-      a.games++;
-      if (p.win) a.wins++;
-      a.kills += p.kills || 0;
-      a.deaths += p.deaths || 0;
-      a.assists += p.assists || 0;
-      a.damage += p.totalDamageDealtToChampions || 0;
-      a.vision += p.visionScore || 0;
-      const cs = (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
-      a.cs += cs;
-      if (durationMin > 0) a.csMinutes += cs / durationMin;
-      a.deathsByHour[hour] += p.deaths || 0;
-      a.gamesByHour[hour]++;
-      a.deathsByDay[dayOfWeek] += p.deaths || 0;
-      a.gamesByDay[dayOfWeek]++;
-      a.results.push({ created, won: Boolean(p.win) });
+    for (const p of match.squadParticipants) {
+      const agg = getAgg(p.squadMemberId!);
+      agg.games++;
+      if (p.win) agg.wins++;
+      agg.kills += p.kills;
+      agg.deaths += p.deaths;
+      agg.assists += p.assists;
+      agg.damage += p.totalDamageDealtToChampions;
+      agg.vision += p.visionScore;
+      agg.cs += p.cs;
+      if (durationMin > 0) agg.csMinutes += p.cs / durationMin;
+      agg.deathsByHour[hour] += p.deaths;
+      agg.gamesByHour[hour]++;
+      agg.deathsByDay[dayOfWeek] += p.deaths;
+      agg.gamesByDay[dayOfWeek]++;
+      agg.results.push({ created: match.created, won: p.win });
     }
 
-    // Timeline para minutos exactos de muerte (viene del caché)
+    // Timeline para minutos exactos de muerte
     try {
+      const timeline = timelineByMatch.get(match.matchId);
       const frames = timeline?.info?.frames || [];
       if (frames.length === 0) continue;
 
-      // Mapear participantId → miembro. Riot usa dos convenciones:
-      //  - match detail: participantId explícito (suele venir 1-based)
-      //  - timeline: puede usar el índice+1
+      // Mapear participantId -> miembro. Riot usa dos convenciones:
+      //  - match detail: participantId explicito (suele venir 1-based)
+      //  - timeline: puede usar el indice+1
       // Construimos ambos mapas y usamos el que coincida, sin doble conteo.
-      const participants: any[] = info.participants;
       const mapByField = new Map<number, SquadMember>();
       const mapByIndex = new Map<number, SquadMember>();
-      participants.forEach((p: any, idx: number) => {
+      match.participants.forEach((p, idx) => {
         const m = puuidToMember.get(p.puuid);
         if (!m) return;
         if (typeof p.participantId === 'number') mapByField.set(p.participantId, m);
         mapByIndex.set(idx + 1, m);
       });
-
       const resolveMember = (pid: number): SquadMember | undefined =>
         mapByField.get(pid) ?? mapByIndex.get(pid);
 
       for (const frame of frames) {
         for (const ev of frame?.events || []) {
-          // Formato nuevo (dataVersion 2): type === 'CHAMPION_KILL'.
-          // La víctima se deduce de victimDamageDealt[].participantId.
+          // Formato nuevo (dataVersion 2): type === CHAMPION_KILL. La victima
+          // se deduce de victimDamageDealt[].participantId.
           if (ev.type === 'CHAMPION_KILL') {
             const victimPids = new Set<number>();
             for (const d of ev.victimDamageDealt || []) {
@@ -167,7 +168,7 @@ export async function GET(req: Request) {
             continue;
           }
 
-          // Formato legacy: EventType === 'Death'
+          // Formato legacy: EventType === Death
           if (ev.EventType === 'Death') {
             const pid = ev.participantId;
             if (!pid) continue;
@@ -179,7 +180,9 @@ export async function GET(req: Request) {
           }
         }
       }
-    } catch { /* timeline no disponible */ }
+    } catch {
+      // timeline no disponible
+    }
   }
 
   // Construir tendencias

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
-import { getSquadMembers } from '@/lib/storage';
-import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
-import { SquadMember, PlayerStatsResult, PlayerAward } from '@/lib/types';
-import { getMatchesWithCache } from '@/lib/matchCache';
+import { PlayerStatsResult, PlayerAward } from '@/lib/types';
+import { getSquadMatchSet } from '@/lib/squadMatches';
 import { guardRead } from '@/lib/rateLimit';
+
+const FLEX_QUEUE = 440;
+const MATCHES_PER_PLAYER = 20;
 
 export async function GET(req: Request) {
   await connection();
@@ -13,15 +14,14 @@ export async function GET(req: Request) {
   const limited = guardRead(req, 'player-stats');
   if (limited) return limited;
 
-  const allMembers = await getSquadMembers();
-  const members = allMembers.filter(
-    (m): m is SquadMember & { puuid: string } => Boolean(m.puuid)
-  );
-  const client = new RiotApiClient();
-  const errors: ErrorInfo[] = [];
-
-  const FLEX_QUEUE = 440;
-  const MATCHES_PER_PLAYER = 20;
+  // Historial Flex de la squad, compartido con duos, trios, composition, trends
+  // y player-metrics. El helper preserva el orden de los match IDs (recorados
+  // miembro por miembro, del más nuevo al más viejo), así que el historial
+  // cronológico que necesita el tilt meter queda igual.
+  const { matches, members, errors } = await getSquadMatchSet({
+    matchesPerPlayer: MATCHES_PER_PLAYER,
+    queue: FLEX_QUEUE,
+  });
 
   if (members.length === 0) {
     return NextResponse.json({
@@ -33,37 +33,6 @@ export async function GET(req: Request) {
       totalMatches: 0,
     } as PlayerStatsResult);
   }
-
-  // Obtener matchIds
-  const orderedMatchIds: string[] = [];
-  const seen = new Set<string>();
-
-  for (const member of members) {
-    try {
-      const routing = getRegionalRouting(member.region);
-      const ids = await client.getMatchIdsByPuuid(
-        member.puuid,
-        routing,
-        MATCHES_PER_PLAYER,
-        FLEX_QUEUE
-      );
-      for (const id of ids) {
-        if (!seen.has(id)) {
-          seen.add(id);
-          orderedMatchIds.push(id);
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error) {
-        errors.push({ type: 'NETWORK_ERROR', message: err.message });
-      }
-    }
-  }
-
-  const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
-  const puuidToMember = new Map<string, SquadMember>(
-    members.map((m) => [m.puuid, m])
-  );
 
   // Agregadores para awards y stats
   interface PlayerAgg {
@@ -81,7 +50,7 @@ export async function GET(req: Request) {
     damageShare: number;
     killsParticipation: number;
     roles: Map<string, { games: number; wins: number }>;
-    // Tilt: rendimiento después de victoria vs derrota
+    // Tilt: rendimiento despues de victoria vs derrota
     afterWin: { games: number; wins: number };
     afterLoss: { games: number; wins: number };
     // Streaks
@@ -119,67 +88,51 @@ export async function GET(req: Request) {
   };
 
   let totalMatches = 0;
-  // Historial cronológico por jugador para el tilt meter
+  // Historial cronologico por jugador para el tilt meter
   const playerTimeline = new Map<string, { matchId: string; won: boolean }[]>();
 
-  // Detalles en un lote: los que ya están en match_cache no tocan Riot, y los
-  // que faltan se piden con concurrencia acotada. El helper preserva el orden
-  // de orderedMatchIds, así que el historial cronológico del tilt queda igual.
-  const details = await getMatchesWithCache(orderedMatchIds, defaultRouting);
+  for (const match of matches) {
+    const squadPlayers = match.squadParticipants;
+    if (squadPlayers.length === 0) continue;
+    totalMatches++;
 
-  for (const { matchId, info } of details) {
-    try {
-      if (!info || !Array.isArray(info.participants)) continue;
+    // Registrar resultado individual de cada miembro para el tilt
+    for (const p of squadPlayers) {
+      const memberId = p.squadMemberId!;
+      if (!playerTimeline.has(memberId)) playerTimeline.set(memberId, []);
+      playerTimeline.get(memberId)!.push({ matchId: match.matchId, won: p.win });
+    }
 
-      const squadPlayers = info.participants.filter(
-        (p: any) => puuidToMember.has(p.puuid)
-      );
-      if (squadPlayers.length === 0) continue;
-      totalMatches++;
+    // Team kills para la kill participation
+    const teamKills = new Map<number, number>();
+    for (const p of match.participants) {
+      teamKills.set(p.teamId, (teamKills.get(p.teamId) || 0) + p.kills);
+    }
 
-      // Registrar resultado individual de cada miembro para el tilt
-      for (const p of squadPlayers) {
-        const member = puuidToMember.get(p.puuid)!;
-        if (!playerTimeline.has(member.id)) playerTimeline.set(member.id, []);
-        playerTimeline.get(member.id)!.push({ matchId, won: p.win ?? false });
-      }
+    for (const p of squadPlayers) {
+      const agg = getAgg(p.squadMemberId!);
+      agg.games++;
+      if (p.win) agg.wins++;
+      agg.kills += p.kills;
+      agg.deaths += p.deaths;
+      agg.assists += p.assists;
+      agg.damage += p.totalDamageDealtToChampions;
+      agg.gold += p.goldEarned;
+      agg.vision += p.visionScore;
+      agg.cs += p.cs;
+      agg.wardsPlaced += p.wardsPlaced;
+      agg.wardsKilled += p.wardsKilled;
 
-      // Team kills y damage para kill participation y damage share
-      const teamKills = new Map<number, number>();
-      const teamDamage = new Map<number, number>();
-      for (const p of info.participants) {
-        teamKills.set(p.teamId, (teamKills.get(p.teamId) || 0) + (p.kills || 0));
-        teamDamage.set(p.teamId, (teamDamage.get(p.teamId) || 0) + (p.totalDamageDealtToChampions || 0));
-      }
+      const tk = teamKills.get(p.teamId) || 1;
+      const td = match.teamDamage.get(p.teamId) || 1;
+      agg.killsParticipation += (p.kills + p.assists) / tk;
+      agg.damageShare += p.totalDamageDealtToChampions / td;
 
-      for (const p of squadPlayers) {
-        const member = puuidToMember.get(p.puuid)!;
-        const agg = getAgg(member.id);
-        agg.games++;
-        if (p.win) agg.wins++;
-        agg.kills += p.kills || 0;
-        agg.deaths += p.deaths || 0;
-        agg.assists += p.assists || 0;
-        agg.damage += p.totalDamageDealtToChampions || 0;
-        agg.gold += p.goldEarned || 0;
-        agg.vision += p.visionScore || 0;
-        agg.cs += (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0);
-        agg.wardsPlaced += p.wardsPlaced || 0;
-        agg.wardsKilled += p.wardsKilled || 0;
-
-        const tk = teamKills.get(p.teamId) || 1;
-        const td = teamDamage.get(p.teamId) || 1;
-        agg.killsParticipation += ((p.kills || 0) + (p.assists || 0)) / tk;
-        agg.damageShare += (p.totalDamageDealtToChampions || 0) / td;
-
-        const role = p.role || 'FILL';
-        if (!agg.roles.has(role)) agg.roles.set(role, { games: 0, wins: 0 });
-        const r = agg.roles.get(role)!;
-        r.games++;
-        if (p.win) r.wins++;
-      }
-    } catch {
-      // ignorar
+      const role = p.role || 'FILL';
+      if (!agg.roles.has(role)) agg.roles.set(role, { games: 0, wins: 0 });
+      const r = agg.roles.get(role)!;
+      r.games++;
+      if (p.win) r.wins++;
     }
   }
 

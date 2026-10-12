@@ -136,7 +136,7 @@ function MemberCard({
 
   // Tarjeta normal (ok o partial)
   return (
-    <div className="bg-slate-900/60 border border-slate-800/80 hover:border-slate-700/80 rounded-xl overflow-hidden transition shadow-sm">
+    <div className="cv-auto bg-slate-900/60 border border-slate-800/80 hover:border-slate-700/80 rounded-xl overflow-hidden transition shadow-sm">
       {/* Banner de advertencia si hay errores parciales */}
       {item.status === 'partial' && (
         <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 flex items-center gap-2 text-amber-300 text-xs">

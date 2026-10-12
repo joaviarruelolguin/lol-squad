@@ -75,6 +75,22 @@ a:focus-visible {
   }
 }
 
+/*
+ * Saltar el layout y el paint de lo que no se ve.
+ *
+ * La pestaña de Flex muestra 5 partidas por página y crece sin límite con
+ * "cargar más": cada tarjeta tiene 10 filas de jugadores con su ícono. Con 50
+ * partidas son cientos de imagenes, casi todas fuera de pantalla.
+ * content-visibility deja que el navegador se salte el render de las tarjetas
+ * que no entran en el viewport y las construye cuando llegan. El
+ * contain-intrinsic-size reserva un alto aproximado para que la barra de scroll
+ * no baile.
+ */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
+}
+
 /* Animación shimmer para los skeletons de carga */
 @keyframes shimmer {
   100% {

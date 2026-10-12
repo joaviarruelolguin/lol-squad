@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
-import { getSquadMembers } from '@/lib/storage';
-import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
-import { RiotApiError, ErrorInfo } from '@/lib/errors';
 import { DuoStat } from '@/lib/types';
+import { ErrorInfo } from '@/lib/errors';
 import { duoSynergyRating } from '@/lib/synergy';
-import { getMatchesWithCache } from '@/lib/matchCache';
+import { getSquadMatchSet } from '@/lib/squadMatches';
 import { guardRead } from '@/lib/rateLimit';
 
 export interface DuoResult {
@@ -16,34 +14,25 @@ export interface DuoResult {
   membersAnalyzed: number;
 }
 
-const MATCHES_PER_PLAYER = 20; // últimas N partidas a escanear
-
-function toErrorInfo(err: unknown): ErrorInfo {
-  if (err instanceof RiotApiError) return err.toInfo();
-  if (err && typeof err === 'object' && 'type' in err && 'message' in err) {
-    return err as ErrorInfo;
-  }
-  return {
-    type: 'UNKNOWN',
-    message: 'Error inesperado al analizar partidas.',
-    detail: String(err),
-  };
-}
-
-function synergyRating(winrate: number): DuoStat['synergyRating'] {
-  return duoSynergyRating(winrate);
-}
+const MATCHES_PER_PLAYER = 20;
+const FLEX_QUEUE = 440;
 
 export async function GET(req: Request) {
   await connection();
 
   const limited = guardRead(req, 'duos');
   if (limited) return limited;
-  const allMembers = await getSquadMembers();
-  const members = allMembers.filter((m) => m.puuid);
-  const client = new RiotApiClient();
 
-  const errors: ErrorInfo[] = [];
+  // El historial Flex de la squad es el mismo dataset que usan trios,
+  // composition, trends y player-metrics. Pedirlo por acá los comparte en vez de
+  // repetir los pedidos a Riot y el parseo de ~100 partidas.
+  // minSquadMembers filtra por 2+ sin bajar el detalle de las que no cuentan:
+  // getSquadMatchSet ya sabe cuántos de la squad vio en cada historial.
+  const { matches, errors, members } = await getSquadMatchSet({
+    matchesPerPlayer: MATCHES_PER_PLAYER,
+    queue: FLEX_QUEUE,
+    minSquadMembers: 2,
+  });
 
   if (members.length < 2) {
     return NextResponse.json({
@@ -61,85 +50,35 @@ export async function GET(req: Request) {
     } as DuoResult);
   }
 
-  // --- Paso 1: obtener IDs de últimas partidas FLEX de cada miembro ---
-  // matchId -> Set<puuid> de miembros de la squad que jugaron esa partida
-  const matchToPuuids = new Map<string, Set<string>>();
-  const FLEX_QUEUE = 440; // RANKED_FLEX_SR
-
-  for (const member of members) {
-    try {
-      const routing = getRegionalRouting(member.region);
-      const ids = await client.getMatchIdsByPuuid(
-        member.puuid!,
-        routing,
-        MATCHES_PER_PLAYER,
-        FLEX_QUEUE
-      );
-      for (const id of ids) {
-        if (!matchToPuuids.has(id)) matchToPuuids.set(id, new Set());
-        matchToPuuids.get(id)!.add(member.puuid!);
-      }
-    } catch (err) {
-      errors.push(toErrorInfo(err));
-    }
-  }
-
-  // --- Paso 2: solo partidas con 2+ miembros de la squad ---
-  const sharedMatches = [...matchToPuuids.entries()].filter(
-    ([, puuids]) => puuids.size >= 2
-  );
-
-  // --- Paso 3: para cada partida compartida, buscar quién ganó ---
   // clave de pareja "puuidA|puuidB" (ordenados) -> { wins, losses, games }
   const pairStats = new Map<string, { wins: number; losses: number; games: number }>();
   let scannedMatches = 0;
-  const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
 
-  // Pedimos todos los detalles en un lote: los que ya están en match_cache
-  // no tocan Riot, y los que faltan van con concurrencia acotada en vez de
-  // uno por uno (que a 2 req/s convertía este endpoint en 20 segundos).
-  const matchIds = sharedMatches.map(([id]) => id);
-  const details = await getMatchesWithCache(matchIds, defaultRouting);
+  for (const match of matches) {
+    const squadPlayers = match.squadParticipants;
+    if (squadPlayers.length < 2) continue;
+    scannedMatches++;
 
-  for (const { matchId, info } of details) {
-    try {
-      const entry = sharedMatches.find(([id]) => id === matchId);
-      if (!entry) continue;
-      const puuids = entry[1];
-      scannedMatches++;
+    for (let i = 0; i < squadPlayers.length; i++) {
+      for (let j = i + 1; j < squadPlayers.length; j++) {
+        const a = squadPlayers[i];
+        const b = squadPlayers[j];
+        const key = [a.puuid, b.puuid].sort().join('|');
+        if (!pairStats.has(key)) pairStats.set(key, { wins: 0, losses: 0, games: 0 });
+        const ps = pairStats.get(key)!;
+        ps.games++;
 
-      // mapa puuid -> ganó?
-      const puuidWin = new Map<string, boolean>();
-      for (const p of info?.participants || []) {
-        if (p.puuid) puuidWin.set(p.puuid, Boolean(p.win));
-      }
-
-      const arr = [...puuids];
-      for (let i = 0; i < arr.length; i++) {
-        for (let j = i + 1; j < arr.length; j++) {
-          const a = arr[i];
-          const b = arr[j];
-          const key = [a, b].sort().join('|');
-          if (!pairStats.has(key)) pairStats.set(key, { wins: 0, losses: 0, games: 0 });
-          const ps = pairStats.get(key)!;
-          ps.games++;
-
-          const winA = puuidWin.get(a);
-          const winB = puuidWin.get(b);
-          // Solo contabilizamos si ambos estaban en el mismo resultado
-          // (mismo equipo): ambos ganaron o ambos perdieron
-          if (winA === winB && winA !== undefined) {
-            if (winA) ps.wins++;
-            else ps.losses++;
-          }
+        // Solo contabilizamos si compartieron resultado (mismo equipo): los dos
+        // ganaron o los dos perdieron.
+        if (a.win === b.win) {
+          if (a.win) ps.wins++;
+          else ps.losses++;
         }
       }
-    } catch {
-      // No pudimos procesar esta partida; la saltamos (no inventamos resultado)
     }
   }
 
-  // --- Paso 4: armar el resultado por pareja ---
+  // --- Armar el resultado por pareja ---
   const puuidToMember = new Map(members.map((m) => [m.puuid, m]));
 
   const duos: DuoStat[] = [];
@@ -161,7 +100,7 @@ export async function GET(req: Request) {
       wins: ps.wins,
       losses: ps.losses,
       winrate,
-      synergyRating: synergyRating(winrate),
+      synergyRating: duoSynergyRating(winrate),
     });
   }
 

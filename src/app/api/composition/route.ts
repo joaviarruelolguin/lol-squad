@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
-import { getSquadMembers } from '@/lib/storage';
-import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { ErrorInfo } from '@/lib/errors';
-import { SquadMember, CompositionResult, ChampCombo } from '@/lib/types';
-import { getMatchesWithCache } from '@/lib/matchCache';
+import { CompositionResult, ChampCombo } from '@/lib/types';
+import { getSquadMatchSet } from '@/lib/squadMatches';
 import { guardRead } from '@/lib/rateLimit';
 
 const MATCHES_PER_PLAYER = 20;
+const FLEX_QUEUE = 440;
 const MIN_GAMES = 2; // mínimo de partidas para que un combo sea confiable
+
+/** Comparador de confianza: más partidas primero, después winrate. */
+function sortByConfidence(a: { games: number; winrate: number }, b: { games: number; winrate: number }) {
+  if (b.games !== a.games) return b.games - a.games;
+  return b.winrate - a.winrate;
+}
 
 // En match-v5 el campo `lane` trae: TOP / JUNGLE / MIDDLE / BOTTOM
 const ROLE_MAP: Record<string, string> = {
@@ -30,19 +35,23 @@ export async function GET(req: Request) {
   // Opcional: ?members=id1,id2,id3 (para recomendar composición específica)
   const memberFilter = searchParams.get('members');
 
-  const allMembers = await getSquadMembers();
-  let members = allMembers.filter(
-    (m): m is SquadMember & { puuid: string } => Boolean(m.puuid)
-  );
+  // Historial Flex de la squad, compartido con duos, trends y player-metrics.
+  // Solo se filtran los 2+ en la squad; el filtro por miembros se aplica
+  // después, sobre los participantes ya normalizados.
+  const squad = await getSquadMatchSet({
+    matchesPerPlayer: MATCHES_PER_PLAYER,
+    queue: FLEX_QUEUE,
+    minSquadMembers: 2,
+  });
 
+  let members = squad.members;
   if (memberFilter) {
     const ids = new Set(memberFilter.split(',').filter(Boolean));
     const filtered = members.filter((m) => ids.has(m.id));
     if (filtered.length > 0) members = filtered;
   }
 
-  const client = new RiotApiClient();
-  const errors: ErrorInfo[] = [];
+  const errors: ErrorInfo[] = squad.errors;
 
   if (members.length < 2) {
     return NextResponse.json({
@@ -54,32 +63,7 @@ export async function GET(req: Request) {
     } as CompositionResult);
   }
 
-  // Obtener matchIds
-  const orderedMatchIds: string[] = [];
-  const seen = new Set<string>();
-
-  for (const member of members) {
-    try {
-      const routing = getRegionalRouting(member.region);
-      const ids = await client.getMatchIdsByPuuid(
-        member.puuid,
-        routing,
-        MATCHES_PER_PLAYER,
-        440 // FLEX
-      );
-      for (const id of ids) {
-        if (!seen.has(id)) {
-          seen.add(id);
-          orderedMatchIds.push(id);
-        }
-      }
-    } catch (err) {
-      if (err instanceof Error) errors.push({ type: 'NETWORK_ERROR' as const, message: err.message });
-    }
-  }
-
-  const defaultRouting = getRegionalRouting(members[0]?.region ?? 'la2');
-  const puuidToMember = new Map<string, SquadMember>(members.map((m) => [m.puuid, m]));
+  const memberIds = new Set(members.map((m) => m.id));
 
   // Agregadores
   // 1. Combos de campeones (pares y tríos)
@@ -89,58 +73,50 @@ export async function GET(req: Request) {
 
   let scannedMatches = 0;
 
-  // Pedimos todos los detalles en un lote: los que ya están en match_cache
-  // no tocan Riot, y los que faltan van con concurrencia acotada en vez de
-  // uno por uno (que a 2 req/s convertía este endpoint en 20 segundos).
-  const details = await getMatchesWithCache(orderedMatchIds, defaultRouting);
+  for (const match of squad.matches) {
+    const squadPlayers = match.squadParticipants.filter((p) =>
+      p.squadMemberId ? memberIds.has(p.squadMemberId) : false
+    );
+    if (squadPlayers.length < 2) continue;
+    scannedMatches++;
 
-  for (const { info } of details) {
-    try {
-      if (!info || !Array.isArray(info.participants)) continue;
+    const squadWon = squadPlayers[0]?.win ?? false;
 
-      const squadPlayers = info.participants.filter((p: any) => puuidToMember.has(p.puuid));
-      if (squadPlayers.length < 2) continue;
-      scannedMatches++;
+    // Combos de campeones del equipo de la squad (usar el equipo del jugador,
+    // no el de toda la partida).
+    const teamId = squadPlayers[0]?.teamId;
+    const teamPlayers = match.participants.filter((p) => p.teamId === teamId);
+    const champNames = teamPlayers
+      .map((p) => p.championName)
+      .filter(Boolean)
+      .sort();
 
-      const squadWon = squadPlayers[0]?.win ?? false;
-
-      // Combos de campeones del equipo de la squad (usar el equipo del jugador, no todos)
-      const teamId = squadPlayers[0]?.teamId;
-      const teamPlayers = info.participants.filter((p: any) => p.teamId === teamId);
-      const champNames = teamPlayers
-        .map((p: any) => p.championName)
-        .filter(Boolean)
-        .sort();
-
-      // Pares
-      for (let i = 0; i < champNames.length; i++) {
-        for (let j = i + 1; j < champNames.length; j++) {
-          const key = `${champNames[i]}+${champNames[j]}`;
-          if (!comboAgg.has(key)) comboAgg.set(key, { wins: 0, games: 0 });
-          const c = comboAgg.get(key)!;
-          c.games++;
-          if (squadWon) c.wins++;
-        }
+    // Pares
+    for (let i = 0; i < champNames.length; i++) {
+      for (let j = i + 1; j < champNames.length; j++) {
+        const key = `${champNames[i]}+${champNames[j]}`;
+        if (!comboAgg.has(key)) comboAgg.set(key, { wins: 0, games: 0 });
+        const c = comboAgg.get(key)!;
+        c.games++;
+        if (squadWon) c.wins++;
       }
+    }
 
-      // Tríos (composición completa de 5 = firma)
-      const teamKey = champNames.join('+');
-      if (!comboAgg.has(teamKey)) comboAgg.set(teamKey, { wins: 0, games: 0 });
-      const tk = comboAgg.get(teamKey)!;
-      tk.games++;
-      if (squadWon) tk.wins++;
+    // Tríos (composición completa de 5 = firma)
+    const teamKey = champNames.join('+');
+    if (!comboAgg.has(teamKey)) comboAgg.set(teamKey, { wins: 0, games: 0 });
+    const tk = comboAgg.get(teamKey)!;
+    tk.games++;
+    if (squadWon) tk.wins++;
 
-      // Rol real: en match-v5 el campo `lane` trae la posición real
-      for (const p of squadPlayers) {
-        const lane = (p.lane || '').toUpperCase();
-        const role = ROLE_MAP[lane] || 'FILL';
-        if (!roleAgg.has(role)) roleAgg.set(role, { wins: 0, games: 0 });
-        const r = roleAgg.get(role)!;
-        r.games++;
-        if (squadWon) r.wins++;
-      }
-    } catch {
-      // ignorar
+    // Rol real: en match-v5 el campo lane trae la posición real
+    for (const p of squadPlayers) {
+      const lane = (p.lane || '').toUpperCase();
+      const role = ROLE_MAP[lane] || 'FILL';
+      if (!roleAgg.has(role)) roleAgg.set(role, { wins: 0, games: 0 });
+      const r = roleAgg.get(role)!;
+      r.games++;
+      if (squadWon) r.wins++;
     }
   }
 
@@ -157,12 +133,10 @@ export async function GET(req: Request) {
       winrate: Math.round((data.wins / data.games) * 100),
     });
   }
-  // Ordenar por confianza: primero los combos con más partidas,
-// después por winrate. Un 100% en 2 partidas no es confiable.
-  champCombos.sort((a, b) => {
-    if (b.games !== a.games) return b.games - a.games;
-    return b.winrate - a.winrate;
-  });
+
+  // Ordenar por confianza: primero los combos con más partidas, después por
+  // winrate. Un 100% en 2 partidas no es confiable.
+  champCombos.sort((a, b) => sortByConfidence(a, b));
 
   // Roles con winrate
   const roleFills = [...roleAgg.entries()].map(([role, data]) => ({

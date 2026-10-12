@@ -6,7 +6,8 @@ import {
   maskKey,
 } from '@/lib/riotKey';
 import { RiotApiError } from '@/lib/errors';
-import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
+import { RiotApiClient, getRegionalRouting, cache } from '@/lib/riot';
+import { clearChampionCache } from '@/lib/ddragon';
 import { getSquadMembers } from '@/lib/storage';
 import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
 import { readJson, requireString, validationErrorResponse } from '@/lib/validate';
@@ -137,6 +138,13 @@ export async function PUT(req: Request) {
     }
 
     const meta = await setRiotKey(trimmed);
+
+    // La key cambio: lo que tenemos cacheado se pidio con la anterior. El
+    // contenido de una partida es el mismo con cualquier key, pero si el motivo
+    // del cambio es que la vieja vencio, lo que interesa es recargar.
+    cache.clear();
+    clearChampionCache();
+
     return NextResponse.json({
       success: true,
       message: 'API key guardada y verificada correctamente.',
