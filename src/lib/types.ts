@@ -393,6 +393,83 @@ export interface WeeklyPlayerStat {
   wardsKilled: number;
 }
 
+// ---------- MVP Semanal ----------
+export interface MvpWindow {
+  start: number;
+  end: number;
+  /** Momento exacto en que se corona un MVP nuevo. */
+  renewsAt: number;
+  /** 'week' = semana calendario (lunes a domingo). 'rolling' = 7 días móviles. */
+  kind: 'week' | 'rolling';
+  days: number;
+}
+
+export interface MvpScoreBreakdown {
+  /** Puntaje bruto 0-100 antes del ajuste por tamaño de muestra. */
+  raw: number;
+  /** Aporte de cada métrica al puntaje (los pesos suman 100). */
+  parts: {
+    winrate: number;
+    kda: number;
+    damageShare: number;
+    vision: number;
+    momentum: number;
+  };
+}
+
+export interface MvpEntry {
+  memberId: string;
+  gameName: string;
+  nickname: string;
+  profileIconId: number;
+  role: string;
+  games: number;
+  wins: number;
+  losses: number;
+  winrate: number;
+  avgKills: number;
+  avgDeaths: number;
+  avgAssists: number;
+  avgKDA: number;
+  avgDamage: number;
+  avgVision: number;
+  avgCS: number;
+  wardsPlaced: number;
+  /** % del daño del equipo (promedio). */
+  damageShare: number;
+  streak: { type: 'win' | 'loss' | null; length: number };
+  /** Últimos 5 resultados, del más viejo al más nuevo. */
+  lastResults: boolean[];
+  champion: { name: string; games: number; wins: number; winrate: number } | null;
+  score: number;
+  scoreBreakdown: MvpScoreBreakdown;
+  /** 0-100: cuánto pesa su muestra en el puntaje final. */
+  confidence: number;
+  lowSample: boolean;
+}
+
+export interface MvpResult {
+  status: 'ok' | 'partial' | 'error';
+  errors: ErrorInfo[];
+  window: MvpWindow;
+  /** El coronado de la ventana, o null si no hubo partidas suficientes. */
+  mvp: MvpEntry | null;
+  /** Top 3 para el podio del banner. */
+  podium: MvpEntry[];
+  /** Todos los que jugaron, ordenados por puntaje. */
+  ranking: MvpEntry[];
+  matchesInWindow: number;
+  squad: {
+    totalPlayerGames: number;
+    wins: number;
+    losses: number;
+    winrate: number;
+  };
+  /** MVP de la ventana anterior, para comparar. */
+  previous: { memberId: string; gameName: string; score: number } | null;
+  computedAt: string;
+}
+
 export interface WeeklySummary {
   id: string;
   week_start: string;
