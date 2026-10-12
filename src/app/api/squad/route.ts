@@ -3,7 +3,7 @@ import { connection } from 'next/server';
 import { getSquadMembers, saveSquadMember, removeSquadMember } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
 import { RiotApiError, ErrorInfo } from '@/lib/errors';
-import { SquadMember } from '@/lib/types';
+import { SquadMember, RiotRegion } from '@/lib/types';
 import { checkRateLimit, getClientIp, rateLimitResponse, LIMITS } from '@/lib/rateLimit';
 import {
   readJson,
@@ -15,8 +15,7 @@ import {
 } from '@/lib/validate';
 
 /** Enum opcional: si viene vacío, devuelve undefined */
-function optionalEnum<T extends string>(
-  value: unknown,
+function optionalEnum<T extends string>(  value: unknown,
   field: string,
   allowed: readonly T[]
 ): ValidationResult<T | undefined> {
@@ -25,6 +24,19 @@ function optionalEnum<T extends string>(
   }
   return requireEnum(value, field, allowed);
 }
+
+/**
+ * Shard hermano dentro de LATAM.
+ *
+ * Riot separa LATAM en dos: la1 (Chile, Perú, Argentina del sur...) y la2
+ * (Brasil, Argentina del norte, México...). La cuenta se resuelve igual en los
+ * dos, pero el Summoner solo existe en el shard que le toca. Si alguien de la1
+ * se busca como la2, Riot devuelve 404 aunque la cuenta exista.
+ */
+const SIBLING_REGION: Partial<Record<RiotRegion, RiotRegion>> = {
+  la1: 'la2',
+  la2: 'la1',
+};
 
 export async function GET() {
   await connection();
@@ -88,22 +100,70 @@ export async function POST(req: Request) {
     const client = new RiotApiClient();
     const routing = getRegionalRouting(region);
 
-    // Verificación obligatoria: NO guardamos nada que Riot no valide
+    // Verificación obligatoria: NO guardamos nada que Riot no valide.
+    //
+    // Ojo con la diferencia entre las dos llamadas:
+    //  - getAccountByRiotId va al routing regional (americas/europe) y
+    //    devuelve la cuenta SIEMPRE que exista, sin importar el shard.
+    //  - getSummonerByPuuid va al shard concreto (la1, la2, na1...) y da 404
+    //    si el jugador está en otro.
+    //
+    // Sin esto, alguien de LATAM Sur (la1) guardado como la2 recibía el mismo
+    // "no se encontró al invocador" que alguien que no existe, y no había
+    // forma de distinguirlo ni de recuperarlo.
     let puuid: string;
-    let profileIconId: number;
-    let summonerLevel: number;
+    let profileIconId = 29;
+    let summonerLevel = 1;
+    let resolvedRegion: RiotRegion = region;
+
     try {
       const account = await client.getAccountByRiotId(gameName, tagLine, routing);
       puuid = account.puuid;
-
-      const summoner = await client.getSummonerByPuuid(puuid, region);
-      profileIconId = summoner.profileIconId;
-      summonerLevel = summoner.summonerLevel;
     } catch (err) {
       const info = toErrorInfo(err);
       return NextResponse.json(
         { error: info.message, errorType: info.type, code: info.code },
         { status: 400 }
+      );
+    }
+
+    // La cuenta existe. Buscamos el summoner en el shard pedido y, si no está,
+    // probamos el hermano de LATAM: es el error más común y se resuelve solo.
+    const candidates: RiotRegion[] = [region];
+    const sibling = SIBLING_REGION[region];
+    if (sibling) candidates.push(sibling);
+
+    for (const shard of candidates) {
+      try {
+        const summoner = await client.getSummonerByPuuid(puuid, shard);
+        profileIconId = summoner.profileIconId;
+        summonerLevel = summoner.summonerLevel;
+        resolvedRegion = shard;
+        break;
+      } catch (err) {
+        const isNotFound =
+          err instanceof RiotApiError && err.type === 'NOT_FOUND';
+        // 404 en el último candidato: no existe en ninguno de los shards.
+        if (!isNotFound || shard === candidates[candidates.length - 1]) {
+          const info = toErrorInfo(err);
+          return NextResponse.json(
+            {
+              error:
+                isNotFound
+                  ? `Encontramos la cuenta ${gameName}#${tagLine}, pero no tiene Summoner en ${region.toUpperCase()} ni en ${sibling?.toUpperCase() ?? '-'}. Si es un jugador nuevo, puede que todavía no haya jugando ninguna partida.`
+                  : info.message,
+              errorType: info.type,
+              code: info.code,
+            },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    if (resolvedRegion !== region) {
+      console.info(
+        `[squad] ${gameName}#${tagLine} no está en ${region}, se agregó desde ${resolvedRegion}`
       );
     }
 
@@ -116,7 +176,7 @@ export async function POST(req: Request) {
       puuid,
       profileIconId,
       summonerLevel,
-      region,
+      region: resolvedRegion,
       addedAt: new Date().toISOString(),
     };
 

@@ -25,6 +25,14 @@ const ROLES = [
   { value: 'FILL', label: 'Fill / Comodín' },
 ] as const;
 
+const REGIONS = [
+  { value: 'la2', label: 'LA2 — LATAM Norte (ARG, MEX, BRA...)' },
+  { value: 'la1', label: 'LA1 — LATAM Sur (CHL, PER...)' },
+  { value: 'br1', label: 'BR1 — Brasil' },
+  { value: 'na1', label: 'NA1 — Norteamérica' },
+  { value: 'euw1', label: 'EUW1 — Europa oeste' },
+] as const;
+
 export function getRankBadgeColor(tier?: string) {
   switch (tier?.toUpperCase()) {
     case 'CHALLENGER':
@@ -299,6 +307,7 @@ export default function SquadTab({
   const [tagLine, setTagLine] = useState('');
   const [nickname, setNickname] = useState('');
   const [role, setRole] = useState<string>('FILL');
+  const [region, setRegion] = useState<string>('la2');
   const [submitting, setSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -312,12 +321,17 @@ export default function SquadTab({
       const res = await fetch('/api/squad', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameName, tagLine, nickname, role }),
+        body: JSON.stringify({ gameName, tagLine, nickname, role, region }),
       });
       const data = await res.json();
       if (!res.ok) {
         setAddError(data.error || 'No se pudo agregar el invocador');
         return;
+      }
+      // Si el server lo encontró en otro shard, lo avisamos y ajustamos el
+      // select para que las altas siguientes salgan por el camino bueno.
+      if (data.member?.region && data.member.region !== region) {
+        setRegion(data.member.region);
       }
       setGameName('');
       setTagLine('');
@@ -469,6 +483,27 @@ export default function SquadTab({
                 onChange={(e) => setNickname(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
               />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">
+                Servidor
+              </label>
+              <select
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
+              >
+                {REGIONS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Si te dice que la cuenta existe pero no la encuentra, probá el
+                otro servidor de LATAM.
+              </p>
             </div>
 
             <div>
