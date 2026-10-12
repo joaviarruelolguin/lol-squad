@@ -4,9 +4,6 @@ import {
   getWeekWindow,
   getRollingWindow,
   isUsableWindow,
-  matchIdToTimestamp,
-  isInWindow,
-  filterMatchIdsByWindow,
   computeMvpScore,
   confidenceWeight,
   applyConfidence,
@@ -20,6 +17,12 @@ import {
   type MvpMatchLike,
   type MvpMemberLike,
 } from '@/lib/mvp';
+
+// Nota: ya no hay filtro de ventana por match ID. El sufijo del ID es un
+// contador monotónico pero NO un timestamp (el LA2_1630050965 es de octubre de
+// 2026, no de 2021), así que la fecha sale del gameCreation del detalle. Ver
+// getRecentMatchesWithCache en matchCache.ts, y los tests de orden en
+// matchId.test.ts.
 
 // 2026-03-11 es miércoles. Lo uso como ancla porque los tests de ventana
 // dependen del día de la semana.
@@ -94,72 +97,6 @@ describe('isUsableWindow', () => {
   });
 });
 
-describe('matchIdToTimestamp', () => {
-  it('extrae el timestamp de un match ID real', () => {
-    // 6801234567 segundos = 2025-07-24 aprox
-    expect(matchIdToTimestamp('LA2_6801234567')).toBe(6801234567000);
-  });
-
-  it('funciona con otras regiones', () => {
-    expect(matchIdToTimestamp('BR1_6800000000')).toBe(6800000000000);
-    expect(matchIdToTimestamp('EUW1_6700000000')).toBe(6700000000000);
-  });
-
-  it('devuelve null con formatos que no podemos interpretar', () => {
-    expect(matchIdToTimestamp('sin-separador')).toBeNull();
-    expect(matchIdToTimestamp('')).toBeNull();
-    expect(matchIdToTimestamp('LA2_')).toBeNull();
-    expect(matchIdToTimestamp('LA2_abc')).toBeNull();
-  });
-
-  it('rechaza timestamps en milisegundos (13 dígitos)', () => {
-    // Si Riot pasara a ms, 1770000000000 nos daría una fecha en el año 58000.
-    expect(matchIdToTimestamp('LA2_1770000000000')).toBeNull();
-  });
-
-  it('rechaza notación exponencial', () => {
-    // Number('1.7e12') = 1700000000000, pero no es un match ID válido.
-    expect(matchIdToTimestamp('LA2_1.7e12')).toBeNull();
-  });
-
-  it('rechaza números fuera de rango razonable', () => {
-    expect(matchIdToTimestamp('LA2_0')).toBeNull();
-    expect(matchIdToTimestamp('LA2_123')).toBeNull();
-  });
-});
-
-describe('isInWindow / filterMatchIdsByWindow', () => {
-  const window = getWeekWindow(WEDNESDAY);
-  const MondayNoon = startOfWeek(WEDNESDAY) + 12 * 60 * 60 * 1000;
-  const lastWeek = startOfWeek(WEDNESDAY) - 24 * 60 * 60 * 1000;
-
-  it('acepta una partida dentro de la ventana', () => {
-    expect(isInWindow(`LA2_${MondayNoon / 1000}`, window)).toBe(true);
-  });
-
-  it('descarta una partida de la semana anterior', () => {
-    expect(isInWindow(`LA2_${lastWeek / 1000}`, window)).toBe(false);
-  });
-
-  it('si no puede parsear el ID, deja pasar la partida', () => {
-    // Nunca perdemos una partida por una optimización de filtrado.
-    expect(isInWindow('formato-raro', window)).toBe(true);
-  });
-
-  it('filtra una lista mixta', () => {
-    const ids = [
-      `LA2_${MondayNoon / 1000}`,
-      `LA2_${lastWeek / 1000}`,
-      'formato-raro',
-      `BR1_${MondayNoon / 1000}`,
-    ];
-    expect(filterMatchIdsByWindow(ids, window)).toEqual([
-      `LA2_${MondayNoon / 1000}`,
-      'formato-raro',
-      `BR1_${MondayNoon / 1000}`,
-    ]);
-  });
-});
 
 describe('computeMvpScore', () => {
   it('un jugador perfecto en todo llega al tope de 100', () => {

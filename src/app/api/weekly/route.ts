@@ -2,12 +2,11 @@ import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
-import { getMatchesWithCache } from '@/lib/matchCache';
+import { getRecentMatchesWithCache } from '@/lib/matchCache';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { checkRateLimit, getClientIp, rateLimitResponse, guardRead, LIMITS } from '@/lib/rateLimit';
 import { SimpleCache } from '@/lib/cache';
 import { WeeklySummary, WeeklyPlayerStat, SquadMember } from '@/lib/types';
-import { filterMatchIdsByWindow } from '@/lib/mvp';
 
 const MATCHES_PER_PLAYER = 20;
 const FLEX_QUEUE = 440;
@@ -99,16 +98,16 @@ async function computeWeeklyStats(weeks: number): Promise<WeeklyStats> {
   const windowMs = weeks * 7 * 24 * 60 * 60 * 1000;
   const cutoff = now - windowMs;
 
-  // Recorte por fecha ANTES de bajar los detalles. El ID de Riot trae la hora
-  // de arranque adentro, así que esto evita pedir ~100 partidas para descartar
-  // ~90. Con weeks=1 el trabajo real baja de ~100 requests a ~10.
-  const inWindow = filterMatchIdsByWindow(orderedMatchIds, {
-    start: cutoff,
-    end: now,
-    renewsAt: now,
-    kind: 'rolling',
-    days: weeks * 7,
-  });
+  // Recorte por ventana. El sufijo del match ID no es un timestamp (es un
+  // contador monotónico), así que la fecha sale del detalle: ordenamos por
+  // recencia y cortamos en cuanto pasan las partidas viejas. Con weeks=1 esto
+  // baja de ~100 requests a ~10 en vez de traer todo y descartar el 90%.
+  const { matches: inWindow } = await getRecentMatchesWithCache(
+    orderedMatchIds,
+    cutoff,
+    defaultRouting,
+    { chunkSize: 10, maxMatches: 80 }
+  );
 
   const aggs = new Map<string, Agg>();
   const getAgg = (id: string): Agg => {
@@ -123,10 +122,7 @@ async function computeWeeklyStats(weeks: number): Promise<WeeklyStats> {
 
   let matchesInWindow = 0;
 
-  // Traemos las partidas con la caché persistente: solo va a Riot lo que falta.
-  // No necesitamos timeline para el resumen semanal, así que lo saltamos.
-  // El concurrency queda en su default (2) por lo que dice matchCache.
-  const cachedMatches = await getMatchesWithCache(inWindow, defaultRouting, false);
+  const cachedMatches = inWindow;
 
   for (const { info } of cachedMatches) {
     if (!info || !Array.isArray(info.participants)) continue;

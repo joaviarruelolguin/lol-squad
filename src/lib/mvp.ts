@@ -1,8 +1,4 @@
 import type { MvpEntry, MvpScoreBreakdown, MvpWindow } from './types';
-import { matchIdTimestamp } from './matchId';
-
-// Reexportado por comodidad: los tests y el endpoint usan el nombre largo.
-export { matchIdTimestamp as matchIdToTimestamp };
 
 /**
  * MVP Semanal: coronamos al mejor jugador de la squad en una ventana de 7 días.
@@ -76,32 +72,6 @@ export function getRollingWindow(now: number = Date.now()): MvpWindow {
  */
 export function isUsableWindow(matchesInWindow: number): boolean {
   return matchesInWindow >= 2;
-}
-
-// ============================================================
-// Match IDs → timestamp (sin pedir el detalle de la partida)
-// ============================================================
-
-// `matchIdTimestamp` vive en `lib/matchId.ts`, compartida con flex-matches, y
-// se reexporta arriba porque el filtro por ventana es parte de la API pública
-// de este módulo.
-
-/**
- * ¿La partida cayó dentro de la ventana?
- *
- * Si el ID no tiene el formato esperado no se puede saber, y en ese caso la
- * dejamos pasar: filtrar por fecha es una optimización, nunca una fuente de
- * pérdida de datos.
- */
-export function isInWindow(matchId: string, window: MvpWindow): boolean {
-  const ts = matchIdTimestamp(matchId);
-  if (ts === null) return true;
-  return ts >= window.start && ts <= window.end;
-}
-
-/** Filtra match IDs por ventana sin pedir ningún detalle a Riot. */
-export function filterMatchIdsByWindow(matchIds: string[], window: MvpWindow): string[] {
-  return matchIds.filter((id) => isInWindow(id, window));
 }
 
 // ============================================================

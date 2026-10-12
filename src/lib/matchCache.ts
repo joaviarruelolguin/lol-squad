@@ -1,6 +1,6 @@
 import { getSupabase, isSupabaseConfigured } from './supabase';
 import { RiotApiClient } from './riot';
-import { routingFromMatchId } from './matchId';
+import { routingFromMatchId, sortByRecency } from './matchId';
 import { RegionalRouting } from './types';
 
 interface CachedMatch {
@@ -141,4 +141,77 @@ function orderBy(matchIds: string[], results: CachedMatch[]): CachedMatch[] {
   return results.sort(
     (a, b) => (order.get(a.matchId) ?? 0) - (order.get(b.matchId) ?? 0)
   );
+}
+
+export interface RecentMatchesResult {
+  /** Partidas con gameCreation >= since, de más reciente a más antigua. */
+  matches: CachedMatch[];
+  /** Cuántos IDs terminamos mirando. */
+  scanned: number;
+  /** Cortamos antes de agotar la lista: ya pasamos la ventana. */
+  stoppedEarly: boolean;
+}
+
+/**
+ * Trae solo las partidas dentro de una ventana temporal, parando de bajar
+ * detalles cuando ya se pasó.
+ *
+ * La secuencia del match ID es monotónica pero NO es un timestamp, así que no
+ * permite saber la fecha sin pedir el detalle. Lo que sí permite es ordenar. La
+ * estrategia es entonces: ordenar de más reciente a más antigua, traer el
+ * detalle por tandas, y cortar en la primera tanda donde aparecen partidas
+ * viejas. Con una ventana de una semana eso baja de ~40 requests a ~5, sin
+ * inventarse fechas.
+ *
+ * `maxMatches` es el presupuesto: si el filtro de fechas no sirve para nada
+ * (partidas que no se cargan, o una squad que no juega hace meses) el corte por
+ * fecha puede no activarse nunca, y sin tope estaríamos bajando el historial
+ * entero.
+ */
+export async function getRecentMatchesWithCache(
+  matchIds: string[],
+  since: number,
+  routing: RegionalRouting,
+  options: { chunkSize?: number; maxMatches?: number } = {}
+): Promise<RecentMatchesResult> {
+  const chunkSize = options.chunkSize ?? 8;
+  const maxMatches = options.maxMatches ?? 60;
+
+  const ordered = sortByRecency([...new Set(matchIds)]);
+
+  const inWindow: CachedMatch[] = [];
+  let scanned = 0;
+
+  for (let i = 0; i < ordered.length; i += chunkSize) {
+    if (inWindow.length >= maxMatches) {
+      return { matches: inWindow, scanned, stoppedEarly: true };
+    }
+
+    const chunk = ordered.slice(i, i + chunkSize);
+    const fetched = await getMatchesWithCache(chunk, routing, false, 2);
+    scanned += chunk.length;
+
+    // De la tanda anterior a esta ya no puede haber más partidas nuevas.
+    let consecutiveOld = 0;
+    for (const match of fetched) {
+      const created = match.info?.gameCreation ?? 0;
+      if (created >= since) {
+        inWindow.push(match);
+        consecutiveOld = 0;
+      } else {
+        // Las que no pudimos cargar no cuentan como viejas: pueden ser justo las
+    // que están en la ventana y no queremos cortar por un 404.
+        if (created > 0) consecutiveOld++;
+      }
+    }
+
+    // Pedimos 3 followed: como el orden viene de una secuencia global, puede
+    // haber algún desajuste entre shards. Con un par de partidas viejas seguidas
+    // ya estamos seguros de que pasamos la ventana.
+    if (consecutiveOld >= 3) {
+      return { matches: inWindow, scanned, stoppedEarly: true };
+    }
+  }
+
+  return { matches: inWindow, scanned, stoppedEarly: false };
 }

@@ -3,59 +3,50 @@ import type { RegionalRouting } from './types';
 /**
  * Utilidades sobre match IDs de Riot.
  *
- * Riot codifica el ID como `PREFIX_<epoch en segundos>` (ej: `LA2_6801234567`).
- * Del propio ID salen dos cosas que nos ahorran requests:
+ * Riot codifica el ID como `PREFIX_<secuencia>` (ej: `LA2_1630050965`).
  *
- * 1. La fecha. El epoch es monótono, así que comparar sufijos equivale a
- *    comparar fechas. Permite filtrar y ordenar partidas por antigüedad SIN
- *    traer el detalle.
- * 2. El routing regional. `americas.api.riotgames.com` sirve match-v5 de
- *    cualquier shard de América, pero pedir un `EUW1_...` ahí da 404. Si en la
- *    squad hay alguien de Europa, usar el routing del primer miembro rompe.
+ * Dos cosas que sí podemos sacar del ID:
  *
- * Antes estas tres cosas vivían duplicadas: `matchIdTime` en flex-matches,
- * `matchIdToTimestamp` en mvp y `routingFromMatchId` exportada desde el route.
+ * 1. El shard. `americas.api.riotgames.com` sirve match-v5 de cualquier shard de
+ *    América, pero pedir un `EUW1_...` ahí da 404. Si en la squad hay alguien de
+ *    Europa, usar el routing del primer miembro rompe.
+ * 2. La recencia RELATIVA. El sufijo numérico es un contador monotónico: una
+ *    partida con sufijo mayor es más reciente. Ordenar por ahí es correcto.
+ *
+ * OJO con lo que el ID NO es: no es un timestamp unix. El 1630050965 de
+ * `LA2_1630050965` es una partida de octubre de 2026, pero interpretarlo como
+ * epoch en segundos da agosto de 2021. Así que del ID no sale ninguna fecha, solo
+ * el orden. Para filtrar por ventana temporal hay que traer el detalle y usar el
+ * `gameCreation` de verdad (ver `getRecentMatchesWithCache` en matchCache.ts).
  */
 
 /**
- * Epoch en milisegundos de la partida, o `null` si el formato no es el esperado.
+ * Secuencia monotónica del match ID, o 0 si el formato no es el esperado.
  *
- * Devolver `null` y no `0` a propósito: el 0 es un valor válido (1/1/1970) y
- * haría que "no lo sé" se confundiera con "es de 1970".
+ * Sirve solo para ORDENAR. Devolver 0 para lo no parseable deja esas partidas al
+ * final de un sort, que es lo que queremos: no las descarta, las pone donde no
+ * molestan.
  */
-export function matchIdTimestamp(matchId: string): number | null {
+export function matchIdSequence(matchId: string): number {
   const sep = matchId.lastIndexOf('_');
-  if (sep < 0) return null;
+  if (sep < 0) return 0;
 
   const raw = matchId.slice(sep + 1);
   // Parseo estricto: Number('1.7e12') = 1700000000000, que no es un match ID.
-  if (!/^\d{1,15}$/.test(raw)) return null;
+  if (!/^\d{1,15}$/.test(raw)) return 0;
 
-  const seconds = Number(raw);
-  // Riot usa segundos. Los cortes descartan tanto un epoch en milisegundos
-  // (13 dígitos) como basura numérica.
-  if (!Number.isFinite(seconds) || seconds < 1e9 || seconds > 1e11) return null;
-
-  return seconds * 1000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/**
- * Epoch en segundos, para ordenar. 0 si no se puede parsear (así `sort` no
- * rompe y las partidas desconocidas quedan al final).
- */
-export function matchIdEpoch(matchId: string): number {
-  const ms = matchIdTimestamp(matchId);
-  return ms === null ? 0 : ms / 1000;
-}
-
-/** Ordena por fecha, de más reciente a más antigua. No muta el original. */
+/** Ordena por recencia, de más reciente a más antigua. No muta el original. */
 export function sortByRecency(matchIds: string[]): string[] {
-  return [...matchIds].sort((a, b) => matchIdEpoch(b) - matchIdEpoch(a));
+  return [...matchIds].sort((a, b) => matchIdSequence(b) - matchIdSequence(a));
 }
 
 /** Valida que el string tenga forma de match ID de Riot. */
 export function isValidMatchId(matchId: string): boolean {
-  return matchIdTimestamp(matchId) !== null;
+  return matchIdSequence(matchId) > 0;
 }
 
 /** Routing regional deducido del prefijo del match ID. */

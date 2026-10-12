@@ -2,19 +2,17 @@ import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { getSquadMembers } from '@/lib/storage';
 import { RiotApiClient, getRegionalRouting } from '@/lib/riot';
-import { getMatchesWithCache } from '@/lib/matchCache';
+import { getRecentMatchesWithCache } from '@/lib/matchCache';
 import { guardRead } from '@/lib/rateLimit';
 import { SimpleCache } from '@/lib/cache';
 import { ErrorInfo } from '@/lib/errors';
 import type { MvpResult, MvpWindow, SquadMember } from '@/lib/types';
 import {
   computeMvp,
-  filterMatchIdsByWindow,
   getRollingWindow,
   getWeekWindow,
   isUsableWindow,
   startOfWeek,
-  type MvpMatchLike,
 } from '@/lib/mvp';
 
 /** Cola 440 = Flex ranked, la que usa la squad. */
@@ -105,30 +103,27 @@ export async function GET(req: Request) {
 
   const uniqueIds = [...new Set(allMatchIds)];
 
-  // --- 2. Recorte por fecha SIN pedir detalles ---
+  // --- 2. Traer solo lo que cae en la ventana ---
   //
-  // Riot mete la hora de arranque en el match ID, así que de las ~40 partidas
-  // que traen los miembros solo bajamos las de la ventana actual y la anterior.
-  // La anterior la necesitamos para el "vs MVP de la semana pasada".
-  const span: MvpWindow = {
+  // El sufijo del match ID es monotónico pero no es un timestamp, así que no
+  // sabemos la fecha sin pedir el detalle. Lo que sí sirve es ordenar por
+  // recencia y cortar en cuanto aparecen partidas viejas: con una ventana de dos
+  // semanas eso son unas 10-15 requests en lugar de ~120.
+  const previousWindow: MvpWindow = {
     start: weekStart - 7 * 24 * 60 * 60 * 1000,
-    end: now,
+    end: weekStart,
     renewsAt: weekStart + 7 * 24 * 60 * 60 * 1000,
     kind: 'week',
-    days: 14,
+    days: 7,
   };
 
-  const idsToFetch = filterMatchIdsByWindow(uniqueIds, span);
-
-  const matches: MvpMatchLike[] =
-    idsToFetch.length > 0
-      ? await getMatchesWithCache(
-          idsToFetch,
-          getRegionalRouting(members[0].region),
-          false,
-          2
-        )
-      : [];
+  const routing = getRegionalRouting(members[0].region);
+  const { matches } = await getRecentMatchesWithCache(
+    uniqueIds,
+    previousWindow.start,
+    routing,
+    { chunkSize: 8, maxMatches: 60 }
+  );
 
   // --- 3. Ventana activa ---
   //
@@ -146,14 +141,14 @@ export async function GET(req: Request) {
     : weekAggregate;
 
   // La ventana de comparación es la inmediatamente anterior a la activa.
-  const previousWindow: MvpWindow = {
+  const compareWindow: MvpWindow = {
     start: activeWindow.start - 7 * 24 * 60 * 60 * 1000,
     end: activeWindow.start,
     renewsAt: activeWindow.renewsAt,
     kind: 'week',
     days: 7,
   };
-  const previousAgg = computeMvp(matches, members, previousWindow);
+  const previousAgg = computeMvp(matches, members, compareWindow);
   const previousMvp = previousAgg.entries[0] ?? null;
 
   const ranking = activeAggregate.entries;
