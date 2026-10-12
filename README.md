@@ -12,12 +12,47 @@ Dashboard de League of Legends para un grupo de amigos. ranks, sinergias, análi
 
 | Sección | Qué muestra |
 |---------|-------------|
-| **Tabla de posiciones** | Rank Flex/Solo de cada miembro, winrate, LP, campeones más jugados |
+| **Tabla de posiciones** | Banner del MVP de la semana (arriba de todo), rank Flex/Solo de cada miembro, winrate, LP, campeones más jugados |
 | **Análisis de Flex** | Partidas Flex paginadas con KDA, daño, visión, puntos débiles, y un Coach IA que las analiza |
 | **Sinergia** | Matriz de dúos y tríos, recomendador de composición, tendencias por jugador |
 | **Stats** | Premios automáticos (el que más se murió, ward bot, racha...), promedios por jugador, tilt meter |
 | **Semanal** | Resumen generado por IA con 3 cosas para mejorar por jugador |
 | **Liga de Customs** | Tabla de posiciones interna, historial de partidas y balanceo automático de equipos |
+
+### El MVP de la semana
+
+Arriba de la tabla de posiciones hay un banner que corona al mejor jugador de la
+semana. No es decorativo: se calcula con datos reales de las partidas Flex.
+
+**La ventana es la semana calendario** (lunes 00:00 hasta ahora), no una ventana
+rodante. Eso es lo que hace que el título se renueva: el ganador queda congelado
+durante la semana y el lunes arranca uno nuevo. Si es lunes a la mañana y todavía
+no jugaron, cae a los últimos 7 días para no dejar el banner vacío.
+
+**Cómo se arma el puntaje** (0 a 100):
+
+| Métrica | Peso | Vale 100% en... |
+|---|---|---|
+| Winrate | 35 | 65% |
+| KDA | 25 | 4.0 |
+| Momentum (últimos 5 juegos) | 15 | 80% de winrate |
+| Damage share | 15 | 28% del daño del equipo |
+| Visión | 10 | 45 de vision score |
+
+Dos decisiones hacen que el número signifique algo:
+
+- **Las referencias son constantes, no el mejor de la squad.** Si normalizáramos
+  contra el máximo de la semana, el ganador sacaría 100 en cada métrica y los
+  puntajes no serían comparables entre semanas, que es lo que sirve para el "le
+  ganó a".
+- **El puntaje se encoge por tamaño de muestra** (`games / (games + 3)` hacia la
+  media de la squad). Con 1 partida el jugador pesa 25% y con 3 pesa 50%: frena
+  que un 1/1 al 100% se lleve el título. El banner marca "muestra chica" cuando
+  el ganador jugó menos de 3 partidas.
+
+El banner muestra además la racha, los últimos 5 resultados como cuadraditos, el
+campeón más jugado, el podio con 2º y 3º, cuánto falta para la renovación y el
+desglose de cómo se calculó el puntaje (se despliega con un click).
 
 ---
 
@@ -137,7 +172,7 @@ npm run test:watch
 
 ### Tests
 
-137 tests sobre la lógica que no se ve en pantalla: clasificación de errores de Riot, rate limiting, validación de input, TTL de la caché, enmascarado de la API key y el mapeo región → shard.
+235 tests sobre la lógica que no se ve en pantalla: clasificación de errores de Riot, rate limiting, validación de input, TTL y tope de la caché, enmascarado de la API key, el mapeo región → shard, el parseo de match IDs y el cálculo completo del MVP semanal.
 
 ```bash
 npm run test
@@ -161,6 +196,7 @@ src/
 │   │   ├── trends/             # patrones de muerte/racha
 │   │   ├── composition/        # combos de campeones
 │   │   ├── balance/            # balanceo de equipos
+│   │   ├── mvp/                # MVP semanal (banner del ranking)
 │   │   ├── weekly/             # resumen semanal con IA
 │   │   ├── ai/chat/            # Coach IA (Gemini)
 │   │   ├── ai/chats/           # historial de chats
@@ -174,6 +210,9 @@ src/
 │   └── not-found.tsx
 ├── components/                 # una pestaña o panel por archivo
 │   ├── SquadTab.tsx            # tabla de posiciones + alta de miembros
+│   ├── MvpBanner.tsx           # banner del MVP semanal
+│   ├── DDragonImage.tsx        # imagen de DDragon con fallback
+│   ├── ConfirmDialog.tsx       # confirmación de acciones destructivas
 │   ├── ShareButton.tsx         # compartir por WhatsApp o copiar el link
 │   ├── DuosTab.tsx             # sinergias (trends + tríos + composición + dúos)
 │   ├── FlexTab.tsx             # chat IA + métricas + listado Flex paginado
@@ -189,6 +228,10 @@ src/
 └── lib/                        # lógica de negocio
     ├── riot.ts                 # cliente de Riot + rate limiter adaptativo
     ├── matchCache.ts           # caché persistente de partidas (Supabase)
+    ├── squadMatches.ts         # historial Flex de la squad, normalizado y compartido
+    ├── matchId.ts              # parseo de match IDs (fecha y routing)
+    ├── mvp.ts                  # cálculo del MVP semanal (testeable)
+    ├── ddragonUrls.ts          # URLs de imágenes de DDragon
     ├── rateLimit.ts            # rate limiting por endpoint
     ├── validate.ts             # validación de input de los POST
     ├── riotKey.ts              # gestión de API key
@@ -197,7 +240,7 @@ src/
     ├── customs.ts              # liga (híbrido)
     ├── synergy.ts              # cálculo de sinergias (testeable)
     ├── errors.ts               # clasificación de errores
-    ├── cache.ts                # caché en memoria
+    ├── cache.ts                # caché en memoria con tope de tamaño
     ├── config.ts               # configuración de la app
     └── types.ts                # tipos compartidos
 ```
@@ -210,7 +253,18 @@ src/
 1. En memoria (5 min por proceso) — evita re-fetch dentro de la misma operación y entre endpoints
 2. En Supabase (`match_cache`) — las partidas ya descargadas no vuelven a pedirse a Riot, ni después de reiniciar el server
 
-Los seis endpoints que analizan partidas (`duos`, `trios`, `player-metrics`, `flex-matches`, `player-stats`, `composition`) comparten esa caché. Antes cada uno pedía las mismas ~40 partidas por su cuenta y las waits una por una.
+Los endpoints que analizan partidas comparten ese dataset a través de
+`squadMatches.ts`, que pide los match IDs una sola vez, lee `match_cache` una vez
+y normaliza los participantes. Cada endpoint hace su propia agregación encima.
+Antes cada uno repetía los pedidos a Riot, el SELECT y hasta el `JSON.parse` de
+las mismas ~100 partidas: abrir la pestaña Sinergia lo hacía tres veces en
+paralelo.
+
+**El match ID de Riot se_parsea antes de pedir detalles.** El ID trae la hora de
+arranque y el shard adentro (`LA2_6801234567`), así que se filtran y ordenan
+partidas por fecha y por routing sin gastar un request. Eso baja tanto el trabajo
+del MVP semanal (de ~40 partidas a ~4) como el de los endpoints con ventana, y
+evita que un jugador de EUW1 en la squad haga fallar sus partidas con 404.
 
 **Rate limiting adaptativo:** el cliente serializa las peticiones a 2 req/s y, cuando Riot devuelve 429, sube el piso de espera de toda la cola (`RateLimiter.penalize`) en vez de solo la request que falló. Sin eso, un 429 disparaba una cascada en la que cada request fallaba dos veces y esperaba el doble.
 
@@ -235,7 +289,10 @@ Las claves de desarrollo de Riot dan **2 requests por segundo**. Analizar la squ
 
 ### Invalidar la caché
 
-Si los datos te parecen viejos, el botón **⚡ Forzar** en el header limpia la caché de Riot, la de fetch del cliente y fuerza el recálculo. El botón **⟳ Actualizar** es el suave: relee del caché.
+Si los datos te parecen viejos, el botón **⚡ Forzar** en el header limpia las cachés del servidor (Riot, catálogo de campeones y dataset de partidas), la de fetch del cliente y fuerza el recálculo en las pestañas ya abiertas. El botón **⟳ Actualizar** es el suave: relee del caché.
+
+El badge junto al botón dice de cuándo son los datos, que en una app que lee de
+la API de Riot no es lo mismo que "ahora".
 
 ---
 
