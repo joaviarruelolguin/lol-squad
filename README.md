@@ -86,6 +86,11 @@ NEXT_PUBLIC_APP_TITLE=LoL Squad Stats
 NEXT_PUBLIC_APP_SUBTITLE=Datos reales de Riot. Sin inventos.
 NEXT_PUBLIC_APP_DESCRIPTION=Dashboard de LoL para tu squad
 NEXT_PUBLIC_APP_REPO_URL=https://github.com/tu-usuario/lol-squad
+
+# URL pública. Opcional: en Vercel se detecta sola.
+# Solo ponela si usás un dominio propio. De esto depende que la imagen de
+# preview funcione al compartir el link por WhatsApp/Telegram.
+NEXT_PUBLIC_SITE_URL=https://tu-dominio.com
 ```
 
 ### Sin Supabase: todo funciona igual
@@ -164,9 +169,12 @@ src/
 │   │   ├── riot-key/           # gestión de API key
 │   │   └── cache/              # control de caché
 │   ├── page.tsx                # dashboard principal (orquesta tabs y estado compartido)
-│   └── layout.tsx
+│   ├── layout.tsx              # metadatos, Open Graph y fuentes
+│   ├── opengraph-image.tsx     # imagen de preview al compartir el link
+│   └── not-found.tsx
 ├── components/                 # una pestaña o panel por archivo
 │   ├── SquadTab.tsx            # tabla de posiciones + alta de miembros
+│   ├── ShareButton.tsx         # compartir por WhatsApp o copiar el link
 │   ├── DuosTab.tsx             # sinergias (trends + tríos + composición + dúos)
 │   ├── FlexTab.tsx             # chat IA + métricas + listado Flex paginado
 │   ├── CustomsTab.tsx          # liga interna

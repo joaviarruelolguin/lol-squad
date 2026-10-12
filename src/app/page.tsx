@@ -30,6 +30,7 @@ import SquadTab from '@/components/SquadTab';
 import DuosTab from '@/components/DuosTab';
 import CustomsTab from '@/components/CustomsTab';
 import RiotKeyManager from '@/components/RiotKeyManager';
+import ShareButton from '@/components/ShareButton';
 
 export default function Home() {
   const [stats, setStats] = useState<MemberResult[]>([]);
@@ -176,6 +177,7 @@ export default function Home() {
               <Zap className={`w-4 h-4 ${forceRefreshing ? 'animate-pulse' : ''}`} />
               <span className="hidden sm:inline">Forzar</span>
             </button>
+            <ShareButton />
           </div>
         </div>
       </header>
