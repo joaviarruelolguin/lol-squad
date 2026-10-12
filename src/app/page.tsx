@@ -294,6 +294,7 @@ export default function Home() {
                 gameName: s.member.gameName,
                 nickname: s.member.nickname,
                 profileIconId: s.member.profileIconId || 29,
+                role: s.member.role,
               }))}
               metrics={playerMetrics}
               metricsLoading={metricsLoading}

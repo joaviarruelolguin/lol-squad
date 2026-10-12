@@ -144,7 +144,10 @@ export async function GET(req: Request) {
           trueDamage: p.trueDamageDealt,
           totalDamageTaken: p.totalDamageTaken,
           goldEarned: p.goldEarned,
-          cs: p.totalMinionsKilled,
+          // El CS de jungla viene de los camp (neutralMinionsKilled). Sin esto
+          // los jungleres figuraban con su CS de lane nomás (tipo 33 en vez de
+          // 150+), muy por debajo de lo que muestran Semanal/Tendencias.
+          cs: (p.totalMinionsKilled || 0) + (p.neutralMinionsKilled || 0),
           visionScore: p.visionScore,
           wardsPlaced: p.wardsPlaced,
           wardsKilled: p.wardsKilled,

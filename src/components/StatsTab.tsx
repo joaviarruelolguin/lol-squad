@@ -27,7 +27,7 @@ const PLAYER_COLORS = [
 ];
 
 interface StatsTabProps {
-  members: { id: string; gameName: string; nickname: string; profileIconId: number }[];
+  members: { id: string; gameName: string; nickname: string; profileIconId: number; role?: string }[];
   metrics: PlayerMetrics[];
   metricsLoading: boolean;
 }
@@ -79,6 +79,10 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
     name: m.gameName,
     value: m.avgCS,
     fill: colorFor(i),
+    // El jungla saca la mayoría de su CS de los camp, así que su número no es
+    // comparable con el de un lanero. Lo aclaramos en vez de dejar que parezca
+    // que farms poco.
+    note: memberById(m.memberId)?.role === 'JUNGLE' ? 'jungla' : undefined,
   }));
 
   const avgKdaData = metrics.map((m, i) => ({
@@ -305,7 +309,7 @@ function MiniBarChart({
   title: string;
   icon: React.ReactNode;
   unit: string;
-  data: { name: string; value: number; fill: string }[];
+  data: { name: string; value: number; fill: string; note?: string }[];
 }) {
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
@@ -334,6 +338,11 @@ function MiniBarChart({
                 </span>
               </div>
             </div>
+            {/* Slot de ancho fijo en todas las filas (aunque esté vacío) para
+                que la aclaración no Corra el largo de las barras. */}
+            <span className="text-[9px] text-slate-500 w-12 shrink-0 text-right">
+              {d.note ? `(${d.note})` : ''}
+            </span>
           </div>
         ))}
       </div>
