@@ -1,17 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { Users, RefreshCw, AlertTriangle, Clock } from 'lucide-react';
 import { TrioResult, TrioStat } from '@/lib/types';
 import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { SkeletonCard, Skeleton } from './Skeleton';
-
-const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
-  <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-  </svg>
-);
+import Spinner from './Spinner';
 
 const RATING_STYLE: Record<TrioStat['synergyRating'], {
   label: string;
@@ -126,10 +120,10 @@ export default function TrioPanel() {
             {daysAgo(oldest) !== daysAgo(newest) && (
               <> (tríos más antiguos: hace {daysAgo(oldest)} días)</>
             )}
-            <span className="text-slate-600">· ordenados por winrate, no por fecha</span>
+            <span className="text-slate-500">· ordenados por winrate, no por fecha</span>
           </p>
         )}
-        <p className="text-[11px] text-slate-600">
+        <p className="text-[11px] text-slate-500">
           El winrate del trío puede ser más alto que el individual: cuenta solo las partidas
           donde esos tres jugaron juntos.
         </p>
@@ -215,7 +209,7 @@ export default function TrioPanel() {
                 </div>
                 <div className="flex items-center justify-between mt-1.5 text-[10px] text-slate-500 font-mono">
                   <span className="text-emerald-400/80">{t.wins} ganadas</span>
-                  <span className="text-slate-600">
+                  <span className="text-slate-500">
                     {t.wins}V{t.losses}D de {t.totalGames}
                   </span>
                   <span className="text-rose-400/80">{t.losses} perdidas</span>

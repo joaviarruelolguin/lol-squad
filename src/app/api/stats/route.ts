@@ -40,7 +40,7 @@ async function processMember(
 ): Promise<MemberResult> {
   // Copia local: si auto-curamos el PUUID no queremos mutar el objeto que
   // vino de storage mientras otras promesas lo están leyendo.
-  let member = { ...original };
+  const member = { ...original };
   const errors: MemberResult['errors'] = {};
   let soloQueue: RankedStats | undefined;
   let flexQueue: RankedStats | undefined;

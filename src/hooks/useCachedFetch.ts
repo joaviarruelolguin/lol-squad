@@ -9,6 +9,14 @@ interface UseCachedFetchOptions {
   ttl?: number;
   /** Si debe cargar apenas se monta el componente */
   autoFetch?: boolean;
+  /**
+   * Pedir que el hook lleve la cuenta regresiva de la caché.
+   *
+   * Viene opt-in porque mantenerla cuesta un `setInterval`: sin esto, los tres
+   * paneles de Sinergia (TrendsPanel, TrioPanel, CompositionPanel) se
+   * re-renderizaban a 1 Hz con ~50 filas en el DOM, y ninguno leía el valor.
+   */
+  countdown?: boolean;
 }
 
 interface UseCachedFetchResult<T> {
@@ -38,7 +46,7 @@ const DEFAULT_TTL = 5 * 60 * 1000; // 5 minutos
 
 export function useCachedFetch<T>(
   url: string,
-  { key, ttl = DEFAULT_TTL, autoFetch = true }: UseCachedFetchOptions
+  { key, ttl = DEFAULT_TTL, autoFetch = true, countdown = false }: UseCachedFetchOptions
 ): UseCachedFetchResult<T> {
   const [data, setData] = useState<T | null>(() => {
     const cached = store.get(key);
@@ -55,6 +63,7 @@ export function useCachedFetch<T>(
 
   // Evitar condiciones de carrera en StrictMode
   const inFlight = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
     if (inFlight.current) return;
@@ -62,8 +71,15 @@ export function useCachedFetch<T>(
     setLoading(true);
     setError(null);
 
+    // Abortar el fetch anterior: si el usuario aprieta "Actualizar" dos veces o
+    // cambia de pestaña rápido, el pedido viejo se completaba y se parseaba
+    // entero para terminar descartado.
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) {
         // Si falla, mantenemos el dato viejo si lo había
         throw new Error(`HTTP ${res.status}`);
@@ -73,8 +89,9 @@ export function useCachedFetch<T>(
       store.set(key, { data: json, fetchedAt: now });
       setData(json);
       setFetchedAt(now);
-      setTtlRemaining(ttl);
+      if (countdown) setTtlRemaining(ttl);
     } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
       console.error(`[useCachedFetch:${key}]`, err);
       setError(
         err instanceof Error
@@ -82,10 +99,15 @@ export function useCachedFetch<T>(
           : 'Error al cargar los datos'
       );
     } finally {
-      inFlight.current = false;
-      setLoading(false);
+      if (!ctrl.signal.aborted) {
+        inFlight.current = false;
+        setLoading(false);
+      }
     }
-  }, [url, key, ttl]);
+  }, [url, key, ttl, countdown]);
+
+  // Cancelar el pedido en vuelo si el componente se desmonta.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // Cargar solo si no hay dato fresco
   useEffect(() => {
@@ -94,15 +116,15 @@ export function useCachedFetch<T>(
     const isFresh = cached && Date.now() - cached.fetchedAt <= ttl;
     if (!isFresh) {
       load();
-    } else {
+    } else if (countdown) {
       setTtlRemaining(ttl - (Date.now() - cached.fetchedAt));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, autoFetch]);
 
-  // Contador regresivo de la caché
+  // Contador regresivo de la caché. Solo si lo pidió quien usa el hook.
   useEffect(() => {
-    if (!fetchedAt) return;
+    if (!countdown || !fetchedAt) return;
     const tick = () => {
       const remaining = ttl - (Date.now() - fetchedAt);
       setTtlRemaining(remaining > 0 ? remaining : null);
@@ -110,7 +132,7 @@ export function useCachedFetch<T>(
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [fetchedAt, ttl]);
+  }, [fetchedAt, ttl, countdown]);
 
   const refresh = useCallback(async () => {
     store.delete(key);

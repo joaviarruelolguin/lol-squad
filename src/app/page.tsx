@@ -1,6 +1,7 @@
-'use client';
+﻿'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import {
   Trophy,
   Flame,
@@ -22,15 +23,53 @@ import {
 } from '@/lib/types';
 import { APP_TITLE, APP_SUBTITLE, APP_REPO_URL } from '@/lib/config';
 import { clearAllFetchCache } from '@/hooks/useCachedFetch';
-import StatsTab from '@/components/StatsTab';
-import WeeklyTab from '@/components/WeeklyTab';
+import { Skeleton } from '@/components/Skeleton';
 import SectionHeader from '@/components/SectionHeader';
-import FlexTab from '@/components/FlexTab';
 import SquadTab from '@/components/SquadTab';
-import DuosTab from '@/components/DuosTab';
-import CustomsTab from '@/components/CustomsTab';
 import RiotKeyManager from '@/components/RiotKeyManager';
 import ShareButton from '@/components/ShareButton';
+
+type TabId = 'squad' | 'duos' | 'flex' | 'stats' | 'weekly' | 'customs';
+
+/** Placeholder mientras entra el chunk de una pestaña. */
+function TabSkeleton() {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-label="Cargando">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3"
+        >
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-64" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Las pestañas se cargan bajo demanda.
+ *
+ * Todas iban en el bundle inicial aunque solo se muestra una a la vez, y cada una
+ * arrastra lo suyo (FlexTab se lleva CoachIA, LaneDiffPanel y las tarjetas de
+ * partida). Con `next/dynamic` el primer render solo descarga Ranking, que es la
+ * pestaña de arranque.
+ */
+const FlexTab = dynamic(() => import('@/components/FlexTab'), { loading: TabSkeleton });
+const DuosTab = dynamic(() => import('@/components/DuosTab'), { loading: TabSkeleton });
+const StatsTab = dynamic(() => import('@/components/StatsTab'), { loading: TabSkeleton });
+const WeeklyTab = dynamic(() => import('@/components/WeeklyTab'), { loading: TabSkeleton });
+const CustomsTab = dynamic(() => import('@/components/CustomsTab'), { loading: TabSkeleton });
+
+const TABS: { id: TabId; label: string; Icon: typeof Trophy; active: string }[] = [
+  { id: 'squad', label: 'Ranking', Icon: Trophy, active: 'border-cyan-500 text-cyan-400' },
+  { id: 'flex', label: 'Flex', Icon: Gamepad2, active: 'border-violet-500 text-violet-400' },
+  { id: 'duos', label: 'Sinergia', Icon: Flame, active: 'border-pink-500 text-pink-400' },
+  { id: 'stats', label: 'Stats', Icon: BarChart3, active: 'border-amber-500 text-amber-400' },
+  { id: 'weekly', label: 'Semanal', Icon: CalendarDays, active: 'border-violet-500 text-violet-400' },
+  { id: 'customs', label: 'Customs', Icon: Crown, active: 'border-indigo-500 text-indigo-400' },
+];
 
 export default function Home() {
   const [stats, setStats] = useState<MemberResult[]>([]);
@@ -40,7 +79,7 @@ export default function Home() {
     table: Record<string, TableRow>;
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'squad' | 'duos' | 'flex' | 'stats' | 'weekly' | 'customs'>('squad');
+  const [activeTab, setActiveTab] = useState<TabId>('squad');
   const [cacheSize, setCacheSize] = useState<number | null>(null);
   const [forceRefreshing, setForceRefreshing] = useState(false);
   // Cuando cambia, FlexTab recarga partidas, métricas e historial de chat.
@@ -52,37 +91,22 @@ export default function Home() {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsError, setMetricsError] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [resStats, resDuos, resCustoms, resCache] = await Promise.all([
-        fetch('/api/stats').then((r) => r.json()),
-        fetch('/api/duos').then((r) => r.json()),
-        fetch('/api/customs').then((r) => r.json()),
-        fetch('/api/cache').then((r) => r.json()).catch(() => null),
-      ]);
-      setStats(resStats);
-      setDuoData(resDuos);
-      setCustoms(resCustoms);
-      setCacheSize(resCache?.cachedEntries ?? null);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-    loadMetrics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Para abortar los fetches en vuelo si se dispara otro pedido antes de que
+  // termine el anterior (el botón "Actualizar" rápido, o el force refresh).
+  const dataAbort = useRef<AbortController | null>(null);
+  const metricsAbort = useRef<AbortController | null>(null);
 
   const loadMetrics = useCallback(async () => {
+    metricsAbort.current?.abort();
+    const ctrl = new AbortController();
+    metricsAbort.current = ctrl;
+
     try {
       setMetricsLoading(true);
       setMetricsError(null);
-      const res = await fetch('/api/player-metrics').then((r) => r.json());
+      const res = await fetch('/api/player-metrics', { signal: ctrl.signal }).then((r) =>
+        r.json()
+      );
       if (res.status === 'error') {
         setMetricsError(
           res.errors?.[0]?.message || 'No se pudieron calcular métricas.'
@@ -91,24 +115,62 @@ export default function Home() {
       } else {
         setPlayerMetrics(res.metrics || []);
       }
-    } catch {
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
       setMetricsError('Error de red al cargar métricas.');
     } finally {
-      setMetricsLoading(false);
+      if (!ctrl.signal.aborted) setMetricsLoading(false);
     }
   }, []);
 
+  const fetchData = useCallback(async () => {
+    dataAbort.current?.abort();
+    const ctrl = new AbortController();
+    dataAbort.current = ctrl;
+
+    try {
+      setLoading(true);
+      const [resStats, resDuos, resCustoms, resCache] = await Promise.all([
+        fetch('/api/stats', { signal: ctrl.signal }).then((r) => r.json()),
+        fetch('/api/duos', { signal: ctrl.signal }).then((r) => r.json()),
+        fetch('/api/customs', { signal: ctrl.signal }).then((r) => r.json()),
+        fetch('/api/cache', { signal: ctrl.signal })
+          .then((r) => r.json())
+          .catch(() => null),
+      ]);
+      setStats(resStats);
+      setDuoData(resDuos);
+      setCustoms(resCustoms);
+      setCacheSize(resCache?.cachedEntries ?? null);
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
+      console.error(err);
+    } finally {
+      if (!ctrl.signal.aborted) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    loadMetrics();
+    return () => {
+      dataAbort.current?.abort();
+      metricsAbort.current?.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Cuando RiotKeyManager guarda una key nueva hay que recargar todo.
-  const handleRiotKeyChanged = async () => {
+  const handleRiotKeyChanged = useCallback(async () => {
     await fetchData();
     await loadMetrics();
     setFlexRefreshKey((k) => k + 1);
-  };
+  }, [fetchData, loadMetrics]);
 
-  const handleForceRefresh = async () => {
+  const handleForceRefresh = useCallback(async () => {
     try {
       setForceRefreshing(true);
-      // Limpiamos la caché de fetch del cliente para forrar todo
+      // Limpiamos la caché de fetch del cliente para forzar todo
       clearAllFetchCache();
       // Limpiamos la caché de Riot en el servidor
       await fetch('/api/cache', { method: 'DELETE' }).catch(() => {});
@@ -121,9 +183,38 @@ export default function Home() {
     } finally {
       setForceRefreshing(false);
     }
-  };
+  }, [fetchData, loadMetrics]);
 
-  const memberById = (id: string) => stats.find((s) => s.member.id === id);
+  // Props derivados. Sin esto se creaban arrays y objetos nuevos en cada render
+  // de la página (que tiene 9 useState), y StatsTab/WeeklyTab re-renderizaban
+  // enteros aunque sus datos no hubieran cambiado.
+  const memberById = useCallback(
+    (id: string) => stats.find((s) => s.member.id === id),
+    [stats]
+  );
+
+  const slimMembers = useMemo(
+    () =>
+      stats.map((s) => ({
+        id: s.member.id,
+        gameName: s.member.gameName,
+        nickname: s.member.nickname,
+        profileIconId: s.member.profileIconId || 29,
+        role: s.member.role,
+      })),
+    [stats]
+  );
+
+  const weeklyMembers = useMemo(
+    () =>
+      stats.map((s) => ({
+        id: s.member.id,
+        gameName: s.member.gameName,
+        nickname: s.member.nickname,
+        profileIconId: s.member.profileIconId || 29,
+      })),
+    [stats]
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
@@ -163,18 +254,20 @@ export default function Home() {
               onClick={() => fetchData()}
               className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1.5 text-sm disabled:opacity-50"
               title="Volver a leer los datos desde el caché de la app (rápido). No consulta a Riot de nuevo."
+              aria-label="Actualizar datos"
               disabled={loading}
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
               <span className="hidden sm:inline">Actualizar</span>
             </button>
             <button
               onClick={handleForceRefresh}
               className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition flex items-center gap-1.5 text-sm disabled:opacity-50"
               title="Limpia TODAS las cachés (incluida la de Riot) y vuelve a pedir todo desde cero. Lento y consume rate limit."
+              aria-label="Forzar recarga desde Riot"
               disabled={forceRefreshing}
             >
-              <Zap className={`w-4 h-4 ${forceRefreshing ? 'animate-pulse' : ''}`} />
+              <Zap className={`w-4 h-4 ${forceRefreshing ? 'animate-pulse' : ''}`} aria-hidden="true" />
               <span className="hidden sm:inline">Forzar</span>
             </button>
             <ShareButton />
@@ -185,79 +278,66 @@ export default function Home() {
       {/* API KEY STATUS BAR */}
       <RiotKeyManager onKeyChanged={handleRiotKeyChanged} />
 
-      {/* NAV TABS */}
+      {/* NAV TABS
+          role="tablist" + aria: antes eran 6 <button> sueltos y un lector de
+          pantalla los anunciaba como "button, button, button..." sin contexto y
+          sin relación con el panel que controlan. */}
       <div className="border-b border-slate-800/80 bg-slate-900/20">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 flex gap-2 sm:gap-6 overflow-x-auto flex-nowrap">
-          <button
-            onClick={() => setActiveTab('squad')}
-            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
-              activeTab === 'squad'
-                ? 'border-cyan-500 text-cyan-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Ranking
-          </button>
-          <button
-            onClick={() => setActiveTab('flex')}
-            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
-              activeTab === 'flex'
-                ? 'border-violet-500 text-violet-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Gamepad2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Flex
-          </button>
-          <button
-            onClick={() => setActiveTab('duos')}
-            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
-              activeTab === 'duos'
-                ? 'border-pink-500 text-pink-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Sinergia
-          </button>
-          <button
-            onClick={() => setActiveTab('stats')}
-            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
-              activeTab === 'stats'
-                ? 'border-amber-500 text-amber-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Stats
-          </button>
-          <button
-            onClick={() => setActiveTab('weekly')}
-            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
-              activeTab === 'weekly'
-                ? 'border-violet-500 text-violet-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <CalendarDays className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Semanal
-          </button>
-          <button
-            onClick={() => setActiveTab('customs')}
-            className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
-              activeTab === 'customs'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Customs
-          </button>
+        <div
+          role="tablist"
+          aria-label="Secciones de la app"
+          className="max-w-7xl mx-auto px-2 sm:px-4 flex gap-2 sm:gap-6 overflow-x-auto flex-nowrap"
+        >
+          {TABS.map(({ id, label, Icon, active }) => {
+            const selected = activeTab === id;
+            return (
+              <button
+                key={id}
+                role="tab"
+                id={`tab-${id}`}
+                aria-selected={selected}
+                aria-controls="main-content"
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setActiveTab(id)}
+                onKeyDown={(e) => {
+                  // Flechas para moverse entre pestañas, patrón estándar de
+                  // tablist: sin esto solo se llega con Tab y Enter.
+                  const i = TABS.findIndex((t) => t.id === activeTab);
+                  if (e.key === 'ArrowRight') {
+                    setActiveTab(TABS[(i + 1) % TABS.length].id);
+                  } else if (e.key === 'ArrowLeft') {
+                    setActiveTab(TABS[(i - 1 + TABS.length) % TABS.length].id);
+                  } else if (e.key === 'Home') {
+                    setActiveTab(TABS[0].id);
+                  } else if (e.key === 'End') {
+                    setActiveTab(TABS[TABS.length - 1].id);
+                  } else {
+                    return;
+                  }
+                  e.preventDefault();
+                }}
+                className={`py-2 sm:py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
+                  selected ? active : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" aria-hidden="true" />
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <main id="main-content" className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full space-y-8">
+      {/* Todas las pestañas controlan este mismo panel: solo hay una en el DOM
+          a la vez y lo que cambia es su contenido. `aria-labelledby` apunta al
+          tab activo para que se anuncie el nombre correcto. */}
+      <main
+        id="main-content"
+        role="tabpanel"
+        aria-labelledby={`tab-${activeTab}`}
+        tabIndex={-1}
+        className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full space-y-8"
+      >
         {/* TAB: SQUAD */}
         {activeTab === 'squad' && (
           <SquadTab stats={stats} loading={loading} onChanged={fetchData} />
@@ -289,13 +369,7 @@ export default function Home() {
             />
 
             <StatsTab
-              members={stats.map((s) => ({
-                id: s.member.id,
-                gameName: s.member.gameName,
-                nickname: s.member.nickname,
-                profileIconId: s.member.profileIconId || 29,
-                role: s.member.role,
-              }))}
+              members={slimMembers}
               metrics={playerMetrics}
               metricsLoading={metricsLoading}
             />
@@ -311,14 +385,7 @@ export default function Home() {
               description="Análisis automático de las últimas semanas: récords, tendencias y 3 cosas para mejorar por jugador."
             />
 
-            <WeeklyTab
-              members={stats.map((s) => ({
-                id: s.member.id,
-                gameName: s.member.gameName,
-                nickname: s.member.nickname,
-                profileIconId: s.member.profileIconId || 29,
-              }))}
-            />
+            <WeeklyTab members={weeklyMembers} />
           </div>
         )}
 
@@ -333,7 +400,7 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="border-t border-slate-800/60 py-6 text-xs text-slate-600">
+      <footer className="border-t border-slate-800/60 py-6 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <span>{APP_TITLE}</span>
           <div className="flex items-center gap-4">

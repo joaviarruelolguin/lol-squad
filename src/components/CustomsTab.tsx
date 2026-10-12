@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import {
@@ -173,7 +173,7 @@ export default function CustomsTab({
                 value={teamAName}
                 onChange={(e) => setTeamAName(e.target.value)}
                 required
-                className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
               />
               <input
                 type="text"
@@ -181,7 +181,7 @@ export default function CustomsTab({
                 value={teamBName}
                 onChange={(e) => setTeamBName(e.target.value)}
                 required
-                className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -279,14 +279,14 @@ export default function CustomsTab({
                 placeholder="Score A"
                 value={scoreA}
                 onChange={(e) => setScoreA(e.target.value)}
-                className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
               />
               <input
                 type="number"
                 placeholder="Score B"
                 value={scoreB}
                 onChange={(e) => setScoreB(e.target.value)}
-                className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                className="bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
               />
               <select
                 value={winner}
@@ -436,7 +436,7 @@ export default function CustomsTab({
                           {m.scoreA} - {m.scoreB}
                         </span>
                       )}
-                      <span className="text-slate-600">vs</span>
+                      <span className="text-slate-500">vs</span>
                       <span
                         className={`font-bold ${
                           m.winner === 'B' ? 'text-emerald-400' : 'text-slate-300'

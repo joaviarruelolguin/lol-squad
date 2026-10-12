@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Crown, Medal, Sparkles, Trophy, TrendingUp, Flame, Snowflake } from 'lucide-react';
@@ -198,7 +198,7 @@ export default function MvpBanner() {
   if (!data || !mvp) {
     return (
       <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl px-5 py-4 flex items-center gap-3">
-        <Trophy className="w-5 h-5 text-slate-600 shrink-0" />
+        <Trophy className="w-5 h-5 text-slate-500 shrink-0" />
         <div>
           <div className="text-sm font-semibold text-slate-300">Todavía no hay MVP</div>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -386,7 +386,7 @@ export default function MvpBanner() {
             <ScoreBar label="Momentum" value={parts.momentum} max={15} />
             <ScoreBar label="Daño" value={parts.damageShare} max={15} />
             <ScoreBar label="Visión" value={parts.vision} max={10} />
-            <p className="text-[10px] text-slate-600 pt-1 leading-relaxed">
+            <p className="text-[10px] text-slate-500 pt-1 leading-relaxed">
               Puntaje bruto {mvp.scoreBreakdown.raw.toFixed(1)} sobre 100, ajustado por
               tamaño de muestra ({mvp.confidence.toFixed(0)}% de peso por {mvp.games}{' '}
               {mvp.games === 1 ? 'partida' : 'partidas'}): con pocas partidas el puntaje se

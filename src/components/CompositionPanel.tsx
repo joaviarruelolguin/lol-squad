@@ -1,16 +1,11 @@
-'use client';
+﻿'use client';
 
 import { Sparkles, TrendingUp, RefreshCw, Users } from 'lucide-react';
 import { CompositionResult } from '@/lib/types';
 import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { SkeletonCard, Skeleton } from './Skeleton';
-
-const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
-  <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-  </svg>
-);
+import Spinner from './Spinner';
+import DDragonImage from './DDragonImage';
 
 export default function CompositionPanel() {
   const {
@@ -89,14 +84,15 @@ export default function CompositionPanel() {
             {fullComps.slice(0, 5).map((c, i) => (
               <div key={i} className="flex items-center gap-2 flex-wrap">
                 <div className="flex gap-1">
-                  {c.champions.map((ch, j) => (
-                    <img
-                      key={j}
-                      src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${ch}.png`}
-                      alt={ch}
-                      title={ch}
-                      className="w-7 h-7 rounded-md border border-slate-700 bg-slate-800"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  {c.champions.map((ch) => (
+                    <DDragonImage
+                      key={ch}
+                      kind="champion"
+                      value={ch}
+                      size={28}
+                      alt=""
+                      fallback="?"
+                      className="w-7 h-7 rounded-md border border-slate-700 bg-slate-800 object-cover"
                     />
                   ))}
                 </div>
@@ -106,7 +102,7 @@ export default function CompositionPanel() {
                   }`}>
                     {c.winrate}%
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">
+                  <span className="text-[11px] text-slate-400 font-mono">
                     {c.wins}V / {c.games} partidas
                   </span>
                 </div>
@@ -138,14 +134,15 @@ export default function CompositionPanel() {
               }`}
             >
               <div className="flex gap-0.5">
-                {c.champions.map((ch, j) => (
-                  <img
-                    key={j}
-                    src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${ch}.png`}
-                    alt={ch}
-                    title={ch}
-                    className="w-6 h-6 rounded border border-slate-700 bg-slate-800"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                {c.champions.map((ch) => (
+                  <DDragonImage
+                    key={ch}
+                    kind="champion"
+                    value={ch}
+                    size={24}
+                    alt=""
+                    fallback="?"
+                    className="w-6 h-6 rounded border border-slate-700 bg-slate-800 object-cover"
                   />
                 ))}
               </div>
@@ -153,7 +150,7 @@ export default function CompositionPanel() {
                 <div className="text-xs font-semibold text-slate-200 truncate">
                   {c.champions.join(' + ')}
                 </div>
-                <div className="text-[9px] text-slate-500 font-mono">{c.games} partidas</div>
+                <div className="text-[11px] text-slate-400 font-mono">{c.games} partidas</div>
               </div>
               <div className={`text-sm font-black shrink-0 ${
                 c.winrate >= 60 ? 'text-emerald-400' : c.winrate >= 45 ? 'text-amber-400' : 'text-slate-400'
@@ -187,7 +184,7 @@ export default function CompositionPanel() {
                   />
                 </div>
                 <span className="text-xs font-mono text-slate-400 w-10 text-right">{r.winrate}%</span>
-                <span className="text-[9px] text-slate-600 font-mono w-14 text-right">{r.games} part.</span>
+                <span className="text-[10px] text-slate-500 font-mono w-14 text-right">{r.games} part.</span>
               </div>
             ))}
           </div>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Clock, Plus, AlertCircle, Cpu, CircleCheck } from 'lucide-react';
@@ -6,14 +6,7 @@ import { FlexMatch } from '@/lib/types';
 import LaneDiffPanel from './LaneDiffPanel';
 import { formatFlexDate } from './FlexMatchCard';
 import { Skeleton } from './Skeleton';
-
-// Spinner reutilizable
-const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
-  <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-  </svg>
-);
+import Spinner from './Spinner';
 
 // Renderizador de markdown ligero
 const MarkdownText = ({ text }: { text: string }) => {
@@ -404,7 +397,7 @@ export default function CoachIA({
               value={aiMessage}
               onChange={(e) => setAiMessage(e.target.value)}
               placeholder="Ej: resumí la partida y dame 3 tips..."
-              className="flex-1 bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
+              className="flex-1 bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
             />
             <button
               type="submit"

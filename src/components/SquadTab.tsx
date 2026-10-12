@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import {
@@ -201,7 +201,7 @@ function MemberCard({
                     {rank.tier} {rank.rank}
                   </span>
                   {queueLabel && (
-                    <span className="inline-block px-1.5 py-0.5 text-[9px] font-black rounded-md bg-violet-500/20 text-violet-300 border border-violet-500/40">
+                    <span className="inline-block px-1.5 py-0.5 text-[10px] font-black rounded-md bg-violet-500/20 text-violet-300 border border-violet-500/40">
                       {queueLabel}
                     </span>
                   )}
@@ -422,7 +422,7 @@ export default function SquadTab({
           </div>
         ) : stats.length === 0 ? (
           <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">
-            <Users className="w-10 h-10 mx-auto mb-3 text-slate-600" />
+            <Users className="w-10 h-10 mx-auto mb-3 text-slate-500" />
             La squad está vacía. Agregá al primer invocador con el formulario.
           </div>
         ) : (
@@ -470,7 +470,7 @@ export default function SquadTab({
                   value={gameName}
                   onChange={(e) => setGameName(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
                 />
               </div>
               <div>
@@ -483,7 +483,7 @@ export default function SquadTab({
                   value={tagLine}
                   onChange={(e) => setTagLine(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
                 />
               </div>
             </div>
@@ -497,7 +497,7 @@ export default function SquadTab({
                 placeholder="ej: 'El que nunca mira el minimapa'"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
               />
             </div>
 

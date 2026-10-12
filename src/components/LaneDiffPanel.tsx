@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
@@ -153,7 +153,7 @@ export default function LaneDiffPanel({ matchId }: { matchId: string }) {
                 }`}
                 title={`${lb.ourPlayer} vs ${lb.theirPlayer}`}
               >
-                <div className="text-[9px] text-slate-500 font-semibold">
+                <div className="text-[10px] text-slate-500 font-semibold">
                   {LANE_NAMES[lb.lane] || lb.lane}
                 </div>
                 <div className={`text-[11px] font-bold font-mono ${
@@ -202,7 +202,7 @@ function CompareBar({
   const minePct = (mine / total) * 100;
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[9px] text-slate-500 w-6 shrink-0">{label}</span>
+      <span className="text-[10px] text-slate-500 w-6 shrink-0">{label}</span>
       <div className="flex-1 flex h-3 rounded overflow-hidden bg-slate-800">
         <div
           className="bg-emerald-500/70 h-full transition-all"
@@ -214,9 +214,9 @@ function CompareBar({
           title={`Rivales: ${format(theirs)}`}
         />
       </div>
-      <div className="flex items-center gap-1 text-[9px] font-mono shrink-0">
+      <div className="flex items-center gap-1 text-[10px] font-mono shrink-0">
         <span className="text-emerald-400">{format(mine)}</span>
-        <span className="text-slate-600">vs</span>
+        <span className="text-slate-500">vs</span>
         <span className="text-rose-400">{format(theirs)}</span>
       </div>
     </div>

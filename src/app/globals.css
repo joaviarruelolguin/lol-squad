@@ -4,6 +4,12 @@
  * Paleta minimalista estilo GitHub (dark)
  * Re-mapeamos la escala "slate" a los colores de GitHub Dark
  * para que toda la app herede el look limpio sin tocar componentes.
+ *
+ * Los valores de 500 y 600 están subidos respecto al gris literal de GitHub por
+ * contraste: sobre el fondo #0d1117, el #6e7681 original daba 4.1:1 y el
+ * #484f58 daba 2.3:1, los dos por debajo del mínimo AA de 4.5:1. Con estos
+ * valores slate-500 da 5.1:1 y slate-600 3.3:1 (este último queda para bordes
+ * y texto terciario, no para cuerpo de texto).
  */
 @theme {
   --color-slate-50: #ffffff;
@@ -11,8 +17,8 @@
   --color-slate-200: #c9d1d9;
   --color-slate-300: #b1bac4;
   --color-slate-400: #8b949e;
-  --color-slate-500: #6e7681;
-  --color-slate-600: #484f58;
+  --color-slate-500: #7d8590;
+  --color-slate-600: #5f6772;
   --color-slate-700: #30363d;
   --color-slate-800: #21262d;
   --color-slate-900: #161b22;
@@ -34,6 +40,39 @@ body {
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
     Helvetica, Arial, sans-serif;
+}
+
+/*
+ * Foco visible para todo lo navegable.
+ *
+ * Antes había ~60 botones con `hover:bg-*` y cero `focus-visible:`. Los únicos
+ * anillos de foco eran los inputs, y esos lo hacían quitando el `outline` del
+ * navegador para poner un cambio de borde de 1px, que es un indicador muy
+ * débil. Con teclado no había forma de saber dónde estabas.
+ *
+ * `:focus-visible` (y no `:focus`) para no molestar al mouse.
+ */
+:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* El skip link necesita el mismo tratamiento al recibir foco. */
+a:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Animación shimmer para los skeletons de carga */

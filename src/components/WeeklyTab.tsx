@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Sparkles, ChevronDown, Target, Trophy } from 'lucide-react';
 import {
   Skeleton,
@@ -8,14 +8,9 @@ import {
   SkeletonCard,
   SkeletonTable,
 } from './Skeleton';
+import Spinner from './Spinner';
+import { profileIconUrl } from '@/lib/ddragonUrls';
 import { WeeklyPlayerStat, WeeklySummary } from '@/lib/types';
-
-const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
-  <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-  </svg>
-);
 
 // Renderizador de markdown simple para el texto de la IA
 function AiText({ text }: { text: string }) {
@@ -53,7 +48,7 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
   const [genError, setGenError] = useState<string | null>(null);
   const [openSummary, setOpenSummary] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -74,12 +69,11 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [weeks]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weeks]);
+  }, [load]);
 
   const generate = async () => {
     try {
@@ -104,7 +98,18 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
     }
   };
 
-  const memberById = (id: string) => members.find((m) => m.id === id);
+  // Índices de miembros. Antes se llamaba `members.find()` una vez por fila de
+  // cada tabla y otra vez dentro del loop de mejoras de la IA: con 5 miembros y
+  // 20 filas eso son cientos de recorridos lineales por render.
+  const memberById = useMemo(
+    () => new Map(members.map((m) => [m.id, m])),
+    [members]
+  );
+
+  const memberByGameName = useMemo(
+    () => new Map(members.map((m) => [m.gameName.toLowerCase(), m])),
+    [members]
+  );
 
   return (
     <div className="space-y-6">
@@ -247,19 +252,23 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {improvements.map((imp, i) => {
-                              const member = members.find(
-                                (m) => m.gameName.toLowerCase() === imp.gameName?.toLowerCase()
+                              const member = memberByGameName.get(
+                                imp.gameName?.toLowerCase() ?? ''
                               );
                               return (
                                 <div
-                                  key={i}
+                                  key={`${imp.gameName}-${i}`}
                                   className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3"
                                 >
                                   <div className="flex items-center gap-2 mb-2">
                                     {member && (
                                       <img
-                                        src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/${member.profileIconId}.png`}
-                                        alt={imp.gameName}
+                                        src={profileIconUrl(member.profileIconId)}
+                                        alt=""
+                                        width={24}
+                                        height={24}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="w-6 h-6 rounded border border-slate-600"
                                       />
                                     )}
@@ -270,7 +279,7 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
                                   <ul className="space-y-1">
                                     {imp.tips?.map((tip, j) => (
                                       <li key={j} className="text-[11px] text-slate-400 flex gap-1.5">
-                                        <span className="text-slate-600">•</span>
+                                        <span className="text-slate-500">•</span>
                                         <span>{tip}</span>
                                       </li>
                                     ))}
@@ -309,15 +318,19 @@ export default function WeeklyTab({ members }: WeeklyTabProps) {
                   </thead>
                   <tbody>
                     {playerStats.map((p, i) => {
-                      const member = memberById(p.memberId);
+                      const member = memberById.get(p.memberId);
                       return (
                         <tr key={p.memberId} className="border-b border-slate-800/50 last:border-0">
                           <td className="py-2 flex items-center gap-2">
-                            <span className="text-slate-600 font-mono w-4">{i + 1}</span>
+                            <span className="text-slate-400 font-mono w-4">{i + 1}</span>
                             {member && (
                               <img
-                                src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/${member.profileIconId}.png`}
-                                alt={p.gameName}
+                                src={profileIconUrl(member.profileIconId)}
+                                alt=""
+                                width={24}
+                                height={24}
+                                loading="lazy"
+                                decoding="async"
                                 className="w-6 h-6 rounded border border-slate-600"
                               />
                             )}

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -354,7 +354,7 @@ export default function FlexTab({
         </div>
       ) : flexMatches.length === 0 ? (
         <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">
-          <Gamepad2 className="w-10 h-10 mx-auto mb-3 text-slate-600" />
+          <Gamepad2 className="w-10 h-10 mx-auto mb-3 text-slate-500" />
           {flexStatus === 'error'
             ? 'No se pudo analizar Flex. Revisá los errores arriba.'
             : 'No se encontraron partidas Flex recientes de los miembros de la squad.'}

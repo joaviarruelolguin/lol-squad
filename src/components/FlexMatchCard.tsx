@@ -1,5 +1,6 @@
-'use client';
+﻿'use client';
 
+import { memo, useMemo } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -13,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { FlexMatch, FlexPlayer, WeakPoint } from '@/lib/types';
+import DDragonImage from './DDragonImage';
 
 export function formatFlexDate(iso: string): string {
   try {
@@ -56,7 +58,14 @@ function WeakPointIcon({ type }: { type: WeakPoint['type'] }) {
   }
 }
 
-function FlexPlayerRow({
+/**
+ * Fila de un jugador dentro de la tarjeta de partida.
+ *
+ * Memoizada: se renderizan 10 por tarjeta, y la lista de partidas crece sin
+ * límite con "Cargar más". Sin memo, recargar una partida re-renderiza las
+ * 10 filas aunque solo haya cambiado una.
+ */
+const FlexPlayerRow = memo(function FlexPlayerRow({
   player,
   maxDamage,
 }: {
@@ -74,13 +83,13 @@ function FlexPlayerRow({
         isSquad ? 'bg-violet-500/10 border border-violet-500/30' : 'bg-slate-800/30'
       }`}
     >
-      <img
-        src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/${player.championName}.png`}
-        alt={player.championName}
+      <DDragonImage
+        kind="champion"
+        value={player.championName}
+        size={32}
+        alt=""
+        fallback="?"
         className="w-7 h-7 sm:w-8 sm:h-8 rounded-md object-cover shrink-0"
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = 'none';
-        }}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
@@ -92,12 +101,12 @@ function FlexPlayerRow({
             {player.riotIdGameName}
           </span>
           {player.squadNickname && (
-            <span className="text-[9px] sm:text-[10px] font-semibold text-pink-400 italic truncate hidden sm:inline">
+            <span className="text-[10px] sm:text-[10px] font-semibold text-pink-400 italic truncate hidden sm:inline">
               "{player.squadNickname}"
             </span>
           )}
         </div>
-        <div className="text-[9px] sm:text-[10px] text-slate-500 font-mono truncate">
+        <div className="text-[10px] sm:text-[10px] text-slate-400 font-mono truncate">
           {player.championName} · {player.lane}
         </div>
       </div>
@@ -114,7 +123,7 @@ function FlexPlayerRow({
         >
           {kda}
         </div>
-        <div className="text-[9px] sm:text-[10px] text-slate-500">KDA</div>
+        <div className="text-[10px] sm:text-xs text-slate-400">KDA</div>
       </div>
 
       <div className="w-16 sm:w-28 shrink-0">
@@ -130,26 +139,44 @@ function FlexPlayerRow({
       </div>
 
       <div className="text-right w-8 sm:w-12 shrink-0">
-        <div className="text-[10px] sm:text-xs font-mono text-slate-300">
+        <div className="text-[10px] sm:text-xs font-mono text-slate-200">
           {player.visionScore}
         </div>
-        <div className="text-[9px] sm:text-[10px] text-slate-500">vis</div>
+        <div className="text-[10px] sm:text-xs text-slate-400">vis</div>
       </div>
     </div>
   );
-}
+});
 
 /**
  * Tarjeta de una partida Flex: header con fecha/duración/resultado de la squad,
  * chips de miembros, los dos equipos con sus 10 jugadores y los puntos débiles
  * detectados por el análisis.
  */
-export default function FlexMatchCard({ match }: { match: FlexMatch }) {
-  const maxDamage = Math.max(
-    ...match.teams.flatMap((t) =>
-      t.players.map((p) => p.totalDamageDealtToChampions)
-    ),
-    1
+export default memo(function FlexMatchCard({ match }: { match: FlexMatch }) {
+  // `Math.max` sobre ~20 jugadores y el orden por daño de cada equipo se
+  // calculaban en cada render, y el array ordenado era nuevo cada vez (así que
+  // las filas memoizadas no podían evitar nada).
+  const maxDamage = useMemo(
+    () =>
+      Math.max(
+        ...match.teams.flatMap((t) =>
+          t.players.map((p) => p.totalDamageDealtToChampions)
+        ),
+        1
+      ),
+    [match]
+  );
+
+  const sortedTeams = useMemo(
+    () =>
+      match.teams.map((team) => ({
+        ...team,
+        orderedPlayers: [...team.players].sort(
+          (a, b) => b.totalDamageDealtToChampions - a.totalDamageDealtToChampions
+        ),
+      })),
+    [match]
   );
 
   // Resumen de resultado desde la perspectiva de la squad
@@ -171,19 +198,19 @@ export default function FlexMatchCard({ match }: { match: FlexMatch }) {
           </span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-          <span className="text-[9px] sm:text-[10px] font-mono bg-slate-800 text-slate-400 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-slate-700">
+          <div className="text-[10px] sm:text-xs font-mono text-slate-400 bg-slate-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-slate-700">
             v{match.gameVersion.split('.')[0]}.{match.gameVersion.split('.')[1]}
-          </span>
-          <span className="text-[9px] sm:text-[10px] font-mono bg-violet-500/10 text-violet-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-violet-500/30">
+          </div>
+          <span className="text-[10px] sm:text-xs font-mono bg-violet-500/10 text-violet-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-violet-500/30">
             {match.squadMemberCount} de la squad
           </span>
           {squadWins > 0 && (
-            <span className="text-[9px] sm:text-[10px] font-mono bg-emerald-500/10 text-emerald-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-emerald-500/30">
+            <span className="text-[10px] sm:text-xs font-mono bg-emerald-500/10 text-emerald-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-emerald-500/30">
               {squadWins}V
             </span>
           )}
           {squadLosses > 0 && (
-            <span className="text-[9px] sm:text-[10px] font-mono bg-rose-500/10 text-rose-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-rose-500/30">
+            <span className="text-[10px] sm:text-xs font-mono bg-rose-500/10 text-rose-300 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full border border-rose-500/30">
               {squadLosses}D
             </span>
           )}
@@ -214,7 +241,7 @@ export default function FlexMatchCard({ match }: { match: FlexMatch }) {
 
       {/* Equipos */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 p-2 sm:p-4">
-        {match.teams.map((team) => (
+        {sortedTeams.map((team) => (
           <div
             key={team.teamId}
             className={`rounded-xl border p-2 sm:p-3 space-y-1.5 sm:space-y-2 ${
@@ -225,11 +252,11 @@ export default function FlexMatchCard({ match }: { match: FlexMatch }) {
           >
             <div className="flex items-center justify-between mb-0.5 sm:mb-1">
               <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="text-[10px] sm:text-xs font-bold text-slate-400">
+                <span className="text-[11px] sm:text-xs font-bold text-slate-300">
                   Equipo {team.teamId === 100 ? 'A' : 'B'}
                 </span>
                 <span
-                  className={`text-[9px] sm:text-[10px] font-black uppercase px-1 sm:px-1.5 py-0.5 rounded ${
+                  className={`text-[10px] sm:text-xs font-black uppercase px-1 sm:px-1.5 py-0.5 rounded ${
                     team.win
                       ? 'bg-emerald-500/20 text-emerald-300'
                       : 'bg-rose-500/20 text-rose-300'
@@ -238,19 +265,13 @@ export default function FlexMatchCard({ match }: { match: FlexMatch }) {
                   {team.win ? 'Victoria' : 'Derrota'}
                 </span>
               </div>
-              <span className="text-[10px] sm:text-xs font-mono text-cyan-300">
+              <span className="text-[11px] sm:text-xs font-mono text-cyan-300">
                 Daño: {fmtDmg(team.totalDamage)}
               </span>
             </div>
-            {team.players
-              .slice()
-              .sort(
-                (a, b) =>
-                  b.totalDamageDealtToChampions - a.totalDamageDealtToChampions
-              )
-              .map((p) => (
-                <FlexPlayerRow key={p.puuid} player={p} maxDamage={maxDamage} />
-              ))}
+            {team.orderedPlayers.map((p) => (
+              <FlexPlayerRow key={p.puuid} player={p} maxDamage={maxDamage} />
+            ))}
           </div>
         ))}
       </div>
@@ -258,22 +279,22 @@ export default function FlexMatchCard({ match }: { match: FlexMatch }) {
       {/* Puntos débiles */}
       {match.weakPoints.length > 0 && (
         <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-          <div className="text-[9px] sm:text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5 sm:mb-2 flex items-center gap-1.5">
+          <div className="text-[10px] sm:text-xs uppercase tracking-wider text-slate-400 font-bold mb-1.5 sm:mb-2 flex items-center gap-1.5">
             <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
             Puntos débiles de la partida
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
             {match.weakPoints.map((wp, i) => (
               <div
-                key={i}
+                key={`${wp.type}-${i}`}
                 className="flex items-start gap-1.5 sm:gap-2 bg-slate-800/40 border border-slate-700/50 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2"
               >
                 <WeakPointIcon type={wp.type} />
                 <div className="min-w-0">
-                  <div className="text-[10px] sm:text-xs font-bold text-slate-200">
+                  <div className="text-[11px] sm:text-xs font-bold text-slate-200">
                     {wp.title}
                   </div>
-                  <div className="text-[9px] sm:text-[11px] text-slate-400">
+                  <div className="text-[11px] sm:text-xs text-slate-300">
                     {wp.detail}
                   </div>
                 </div>
@@ -284,4 +305,4 @@ export default function FlexMatchCard({ match }: { match: FlexMatch }) {
       )}
     </div>
   );
-}
+});

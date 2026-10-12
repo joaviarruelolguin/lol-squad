@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CircleCheck, KeyRound, XCircle } from 'lucide-react';
 
 interface RiotKeyMeta {
@@ -11,12 +11,19 @@ interface RiotKeyMeta {
   expiresAt: string | null;
 }
 
+/** Cada cuánto revisamos el estado de la key. */
+const POLL_MS = 60_000;
+
 /**
  * Barra de estado de la API key de Riot + modal para cambiarla.
  *
  * Las keys de desarrollo vencen cada 24h, así que el componente sondea el
- * estado una vez por minuto para tener el contador al día. Cuando guardás una
- * key nueva llama a `onKeyChanged` para que la página recargue todo.
+ * estado para tener el contador al día. Cuando guardás una key nueva llama a
+ * `onKeyChanged` para que la página recargue todo.
+ *
+ * El sondeo se pausa cuando la pestaña está oculta: no hay nada que mirar si
+ * nadie la está viendo, y con varias pestañas abiertas el tráfico se multiplica
+ * sin necesidad.
  */
 export default function RiotKeyManager({
   onKeyChanged,
@@ -31,6 +38,9 @@ export default function RiotKeyManager({
     null
   );
 
+  // Para devolver el foco al botón que abrió el modal al cerrarlo.
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
   const fetchMeta = useCallback(async () => {
     try {
       const res = await fetch('/api/riot-key').then((r) => r.json());
@@ -41,10 +51,60 @@ export default function RiotKeyManager({
   }, []);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(fetchMeta, POLL_MS);
+    };
+    const stop = () => {
+      if (!timer) return;
+      clearInterval(timer);
+      timer = null;
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        // Al volver a la pestaña, el contador puede estar viejo: refrescamos.
+        fetchMeta();
+        start();
+      }
+    };
+
     fetchMeta();
-    const interval = setInterval(fetchMeta, 60_000);
-    return () => clearInterval(interval);
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [fetchMeta]);
+
+  // Cerrar el modal con Escape. Antes solo se cerraba clicking el fondo.
+  useEffect(() => {
+    if (!modalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setModalOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [modalOpen]);
+
+  const openModal = useCallback(() => {
+    setMessage(null);
+    setModalOpen(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setModalOpen(false);
+    triggerRef.current?.focus();
+  }, []);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,16 +168,14 @@ export default function RiotKeyManager({
               </span>
             )}
             <button
-              onClick={() => {
-                setMessage(null);
-                setModalOpen(true);
-              }}
+              ref={triggerRef}
+              onClick={openModal}
               className="text-xs font-semibold text-cyan-300 hover:text-cyan-200 transition"
             >
               {meta?.configured ? 'Cambiar' : 'Agregar'} API key
             </button>
           </div>
-          <div className="text-[11px] text-slate-500 font-mono hidden md:block">
+          <div className="text-[11px] text-slate-400 font-mono hidden md:block">
             Las keys de desarrollo de Riot vencen cada 24h
           </div>
         </div>
@@ -126,22 +184,29 @@ export default function RiotKeyManager({
       {modalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-          onClick={() => setModalOpen(false)}
+          onClick={closeModal}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="riot-key-title"
             className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-cyan-400" />
+              <h3
+                id="riot-key-title"
+                className="text-lg font-bold text-white flex items-center gap-2"
+              >
+                <KeyRound className="w-5 h-5 text-cyan-400" aria-hidden="true" />
                 API Key de Riot
               </h3>
               <button
-                onClick={() => setModalOpen(false)}
+                onClick={closeModal}
+                aria-label="Cerrar"
                 className="text-slate-500 hover:text-slate-300"
               >
-                <XCircle className="w-5 h-5" />
+                <XCircle className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 
@@ -194,7 +259,9 @@ export default function RiotKeyManager({
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
                 placeholder="RGAPI-...."
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                aria-label="API key de Riot"
+                autoFocus
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 font-mono placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
               />
               <button
                 type="submit"

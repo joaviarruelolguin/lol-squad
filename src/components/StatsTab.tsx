@@ -1,20 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Trophy, Eye, Flame, Swords, Target } from 'lucide-react';
-import { PlayerStatsResult, PlayerMetrics } from '@/lib/types';
+import { PlayerStatsResult, PlayerMetrics, PlayerAward } from '@/lib/types';
+import { profileIconUrl } from '@/lib/ddragonUrls';
 import {
   Skeleton,
   SkeletonCard,
   SkeletonBars,
 } from './Skeleton';
-
-const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
-  <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-  </svg>
-);
+import Spinner from './Spinner';
 
 // Colores vívidos por jugador (se asignan por orden estable)
 const PLAYER_COLORS = [
@@ -37,7 +32,7 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -53,71 +48,86 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadStats();
-  }, []);
+  }, [loadStats]);
 
-  const memberById = (id: string) => members.find((m) => m.id === id);
+  // Índice de miembros: antes `memberById` hacía `.find()` y se llamaba una vez
+  // por fila de cada uno de los 6 gráficos, o sea O(n²) por render.
+  const roleByMember = useMemo(
+    () => new Map(members.map((m) => [m.id, m.role])),
+    [members]
+  );
+
+  const gameNameByMember = useMemo(
+    () => new Map(members.map((m) => [m.id, m.gameName])),
+    [members]
+  );
+
   const colorFor = (index: number) => PLAYER_COLORS[index % PLAYER_COLORS.length];
 
-  // Datos para gráficos de promedios (usando player-metrics)
-  const avgDamageData = metrics.map((m, i) => ({
-    name: m.gameName,
-    value: Math.round(m.avgDamage / 100) / 10,
-    fill: colorFor(i),
-  }));
+  // Los 6 datasets se memoizan: sin esto se reconstruyen en cada render del
+  // padre (que tiene 9 useState, así que cualquier cambio los dispara), y eso
+  // rompe la memoización de MiniBarChart.
+  const charts = useMemo(() => {
+    const rows = metrics.map((m, i) => ({
+      memberId: m.memberId,
+      name: m.gameName,
+      fill: colorFor(i),
+      // El jungla saca la mayoría de su CS de los camp, así que su número no es
+      // comparable con el de un lanero. Lo aclaramos en vez de dejar que parezca
+      // que farms poco.
+      isJungle: roleByMember.get(m.memberId) === 'JUNGLE',
+      damage: Math.round(m.avgDamage / 100) / 10,
+      vision: m.avgVisionScore,
+      cs: m.avgCS,
+      kda: m.avgKDA,
+      gold: Math.round(m.avgGold / 100) / 10,
+      damageShare: m.damageShare,
+    }));
 
-  const avgVisionData = metrics.map((m, i) => ({
-    name: m.gameName,
-    value: m.avgVisionScore,
-    fill: colorFor(i),
-  }));
-
-  const avgCsData = metrics.map((m, i) => ({
-    name: m.gameName,
-    value: m.avgCS,
-    fill: colorFor(i),
-    // El jungla saca la mayoría de su CS de los camp, así que su número no es
-    // comparable con el de un lanero. Lo aclaramos en vez de dejar que parezca
-    // que farms poco.
-    note: memberById(m.memberId)?.role === 'JUNGLE' ? 'jungla' : undefined,
-  }));
-
-  const avgKdaData = metrics.map((m, i) => ({
-    name: m.gameName,
-    value: m.avgKDA,
-    fill: colorFor(i),
-  }));
-
-  const avgGoldData = metrics.map((m, i) => ({
-    name: m.gameName,
-    value: Math.round(m.avgGold / 100) / 10,
-    fill: colorFor(i),
-  }));
-
-  const damageShareData = metrics.map((m, i) => ({
-    name: m.gameName,
-    value: m.damageShare,
-    fill: colorFor(i),
-  }));
+    return {
+      damage: rows.map((r) => ({ name: r.name, value: r.damage, fill: r.fill })),
+      vision: rows.map((r) => ({ name: r.name, value: r.vision, fill: r.fill })),
+      cs: rows.map((r) => ({
+        name: r.name,
+        value: r.cs,
+        fill: r.fill,
+        note: r.isJungle ? 'jungla' : undefined,
+      })),
+      kda: rows.map((r) => ({ name: r.name, value: r.kda, fill: r.fill })),
+      gold: rows.map((r) => ({ name: r.name, value: r.gold, fill: r.fill })),
+      damageShare: rows.map((r) => ({
+        name: r.name,
+        value: r.damageShare,
+        fill: r.fill,
+      })),
+    };
+  }, [metrics, roleByMember]);
 
   // Tilt meter
-  const tiltData = stats?.tiltData.map((td) => {
-    const member = memberById(td.memberId);
-    return {
-      name: member?.gameName || td.memberId,
-      'Después de victoria': td.afterWinWinrate,
-      'Después de derrota': td.afterLossWinrate,
-    };
-  }) || [];
+  const tiltData = useMemo(
+    () =>
+      stats?.tiltData.map((td) => ({
+        memberId: td.memberId,
+        name: gameNameByMember.get(td.memberId) || td.memberId,
+        'Después de victoria': td.afterWinWinrate,
+        'Después de derrota': td.afterLossWinrate,
+      })) || [],
+    [stats, gameNameByMember]
+  );
 
-  const awardsByMember = stats?.awards.reduce((acc, award) => {
-    if (!acc[award.memberId]) acc[award.memberId] = [];
-    acc[award.memberId].push(award);
-    return acc;
-  }, {} as Record<string, import('@/lib/types').PlayerAward[]>) || {};
+  const awardsByMember = useMemo(
+    () =>
+      stats?.awards.reduce((acc, award) => {
+        if (!acc[award.memberId]) acc[award.memberId] = [];
+        acc[award.memberId].push(award);
+        return acc;
+      }, {} as Record<string, PlayerAward[]>) || {},
+    [stats]
+  );
 
   const loadingAll = loading || metricsLoading;
 
@@ -179,8 +189,12 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
                 <div key={member.id} className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-2">
                     <img
-                      src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/${member.profileIconId}.png`}
-                      alt={member.gameName}
+                      src={profileIconUrl(member.profileIconId)}
+                      alt=""
+                      width={32}
+                      height={32}
+                      loading="lazy"
+                      decoding="async"
                       className="w-8 h-8 rounded-lg border border-slate-600"
                     />
                     <div>
@@ -190,7 +204,7 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
                   </div>
                   <div className="space-y-1.5">
                     {memberAwards.map((award, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
+                      <div key={`${award.title}-${i}`} className="flex items-center gap-2 text-xs">
                         <span className="text-lg">{award.emoji}</span>
                         <div>
                           <span className="font-semibold text-slate-200">{award.title}</span>
@@ -229,12 +243,12 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <MiniBarChart title="Daño Promedio" icon={<Target className="w-3.5 h-3.5" />} unit="k" data={avgDamageData} />
-            <MiniBarChart title="Visión Promedio" icon={<Eye className="w-3.5 h-3.5" />} unit="" data={avgVisionData} />
-            <MiniBarChart title="CS Promedio" icon={<Swords className="w-3.5 h-3.5" />} unit="" data={avgCsData} />
-            <MiniBarChart title="KDA Promedio" icon={<Flame className="w-3.5 h-3.5" />} unit="" data={avgKdaData} />
-            <MiniBarChart title="Oro Promedio" icon={<Trophy className="w-3.5 h-3.5" />} unit="k" data={avgGoldData} />
-            <MiniBarChart title="% del Daño del Equipo" icon={<Target className="w-3.5 h-3.5" />} unit="%" data={damageShareData} />
+            <MiniBarChart title="Daño Promedio" icon={<Target className="w-3.5 h-3.5" />} unit="k" data={charts.damage} />
+            <MiniBarChart title="Visión Promedio" icon={<Eye className="w-3.5 h-3.5" />} unit="" data={charts.vision} />
+            <MiniBarChart title="CS Promedio" icon={<Swords className="w-3.5 h-3.5" />} unit="" data={charts.cs} />
+            <MiniBarChart title="KDA Promedio" icon={<Flame className="w-3.5 h-3.5" />} unit="" data={charts.kda} />
+            <MiniBarChart title="Oro Promedio" icon={<Trophy className="w-3.5 h-3.5" />} unit="k" data={charts.gold} />
+            <MiniBarChart title="% del Daño del Equipo" icon={<Target className="w-3.5 h-3.5" />} unit="%" data={charts.damageShare} />
           </div>
         )}
       </div>
@@ -250,16 +264,16 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
             ¿Rindes igual después de una derrota? Verde = después de <b className="text-emerald-400">ganar</b>, Rojo = después de <b className="text-red-400">perder</b>.
           </p>
           <div className="space-y-2.5 mb-3">
-            {tiltData.map((row, i) => {
+            {tiltData.map((row) => {
               const w = row['Después de victoria'];
               const l = row['Después de derrota'];
               const gap = w != null && l != null ? w - l : null;
               return (
-                <div key={i} className="bg-slate-800/40 border border-slate-700/40 rounded-lg p-2">
+                <div key={row.memberId} className="bg-slate-800/40 border border-slate-700/40 rounded-lg p-2">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[11px] font-semibold text-slate-200">{row.name}</span>
                     {gap != null && (
-                      <span className={`text-[9px] font-bold ${gap >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      <span className={`text-[10px] font-bold ${gap >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                         gap {gap >= 0 ? '+' : ''}{gap}pp
                       </span>
                     )}
@@ -283,24 +297,41 @@ export default function StatsTab({ members, metrics, metricsLoading }: StatsTabP
 }
 
 // Barra horizontal simple para el tilt meter (más legible que un BarChart)
-function TiltBar({ label, val, cls }: { label: string; val: number | null; cls: string }) {
+const TiltBar = memo(function TiltBar({
+  label,
+  val,
+  cls,
+}: {
+  label: string;
+  val: number | null;
+  cls: string;
+}) {
   return (
     <div className="flex items-center gap-1.5 mt-0.5">
-      <span className="text-[9px] text-slate-500 w-10 shrink-0">{label}</span>
+      <span className="text-[10px] text-slate-400 w-12 shrink-0">{label}</span>
       <div className="flex-1 h-2.5 bg-slate-900/60 rounded-full overflow-hidden">
         {val != null && (
           <div className={`h-full ${cls} rounded-full transition-all`} style={{ width: `${val}%` }} />
         )}
       </div>
-      <span className="text-[9px] font-mono text-slate-400 w-8 text-right shrink-0">
+      <span className="text-[10px] font-mono text-slate-300 w-8 text-right shrink-0">
         {val != null ? `${val}%` : '—'}
       </span>
     </div>
   );
-}
+});
 
-// Gráfico de barras mini con colores por jugador
-function MiniBarChart({
+type BarDatum = { name: string; value: number; fill: string; note?: string };
+
+/**
+ * Gráfico de barras mini con colores por jugador.
+ *
+ * Memoizado a propósito: `title` e `icon` llegan como elementos inline desde el
+ * padre, así que se recrean en cada render. Lo que sí importa es que `data`
+ * venga memoizado (lo hace `charts` en el padre), porque sin eso React ve props
+ * nuevas y re-renderiza los 6 gráficos igual.
+ */
+const MiniBarChart = memo(function MiniBarChart({
   title,
   icon,
   unit,
@@ -309,20 +340,21 @@ function MiniBarChart({
   title: string;
   icon: React.ReactNode;
   unit: string;
-  data: { name: string; value: number; fill: string; note?: string }[];
+  data: BarDatum[];
 }) {
-  const max = Math.max(...data.map((d) => d.value), 1);
+  const max = useMemo(() => Math.max(...data.map((d) => d.value), 1), [data]);
+
   return (
     <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-3">
       <div className="flex items-center gap-1.5 mb-3 text-slate-300">
         {icon}
         <span className="text-[11px] font-semibold">{title}</span>
-        {unit && <span className="text-[9px] text-slate-500">({unit})</span>}
+        {unit && <span className="text-[10px] text-slate-400">({unit})</span>}
       </div>
       <div className="space-y-2">
-        {data.map((d, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-[10px] text-slate-400 w-14 truncate shrink-0" title={d.name}>
+        {data.map((d) => (
+          <div key={d.name} className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-300 w-14 truncate shrink-0" title={d.name}>
               {d.name.length > 8 ? `${d.name.slice(0, 7)}…` : d.name}
             </span>
             <div className="flex-1 h-4 bg-slate-900/60 rounded overflow-hidden">
@@ -333,14 +365,14 @@ function MiniBarChart({
                   backgroundColor: d.fill,
                 }}
               >
-                <span className="text-[9px] font-bold text-white/90">
+                <span className="text-[10px] font-bold text-white/90">
                   {d.value >= 1000 ? `${(d.value / 1000).toFixed(1)}k` : Math.round(d.value * 10) / 10}
                 </span>
               </div>
             </div>
             {/* Slot de ancho fijo en todas las filas (aunque esté vacío) para
-                que la aclaración no Corra el largo de las barras. */}
-            <span className="text-[9px] text-slate-500 w-12 shrink-0 text-right">
+                que la aclaración no corra el largo de las barras. */}
+            <span className="text-[10px] text-slate-400 w-12 shrink-0 text-right">
               {d.note ? `(${d.note})` : ''}
             </span>
           </div>
@@ -348,4 +380,4 @@ function MiniBarChart({
       </div>
     </div>
   );
-}
+});

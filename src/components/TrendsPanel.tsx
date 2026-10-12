@@ -1,16 +1,12 @@
 'use client';
 
+import { memo } from 'react';
 import { TrendingUp, Clock, CalendarDays, Skull, RefreshCw, AlertTriangle, Flame } from 'lucide-react';
 import { TrendResult, PlayerTrend } from '@/lib/types';
 import { useCachedFetch } from '@/hooks/useCachedFetch';
 import { SkeletonCard, Skeleton } from './Skeleton';
-
-const Spinner = ({ size = 'w-5 h-5', className = '' }: { size?: string; className?: string }) => (
-  <svg className={`animate-spin ${size} ${className}`} viewBox="0 0 24 24" fill="none">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-  </svg>
-);
+import Spinner from './Spinner';
+import DDragonImage from './DDragonImage';
 
 export default function TrendsPanel() {
   const {
@@ -80,31 +76,37 @@ export default function TrendsPanel() {
   );
 }
 
-function TrendCard({ trend: t }: { trend: PlayerTrend }) {
+/**
+ * Tarjeta de un jugador. Memoizada porque el panel la rerenderiza entera cada
+ * vez que cambia cualquier otro jugador o el estado de carga.
+ */
+const TrendCard = memo(function TrendCard({ trend: t }: { trend: PlayerTrend }) {
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <img
-          src={`https://ddragon.leagueoflegends.com/cdn/14.20.1/img/profileicon/${t.profileIconId}.png`}
-          alt={t.gameName}
-          className="w-10 h-10 rounded-lg border border-slate-600"
+        <DDragonImage
+          kind="profileicon"
+          value={t.profileIconId}
+          size={40}
+          alt=""
+          className="w-10 h-10 rounded-lg border border-slate-600 object-cover"
         />
         <div className="flex-1 min-w-0">
           <div className="font-bold text-sm text-white truncate">{t.gameName}</div>
-          <div className="text-[10px] text-slate-500">&quot;{t.nickname}&quot;</div>
+          <div className="text-[11px] text-slate-400">&quot;{t.nickname}&quot;</div>
         </div>
         <div className="text-right">
           <div className={`text-lg font-black ${t.winrate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
             {t.winrate}%
           </div>
-          <div className="text-[10px] text-slate-500">{t.games} partidas</div>
+          <div className="text-[11px] text-slate-400">{t.games} partidas</div>
         </div>
       </div>
 
       {/* Sin datos suficientes */}
       {!t.hasEnoughData && (
-        <div className="flex items-center gap-1.5 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
+        <div className="flex items-center gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
           <AlertTriangle className="w-3 h-3" />
           Faltan partidas para detectar patrones (mín. {5})
         </div>
@@ -112,7 +114,7 @@ function TrendCard({ trend: t }: { trend: PlayerTrend }) {
 
       {/* Últimos 10 resultados */}
       <div>
-        <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">
+        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">
           Últimas 10 (izq. = más antigua)
         </div>
         <div className="flex gap-1">
@@ -120,7 +122,7 @@ function TrendCard({ trend: t }: { trend: PlayerTrend }) {
             t.last10Results.map((won, i) => (
               <div
                 key={i}
-                className={`flex-1 h-5 rounded flex items-center justify-center text-[9px] font-bold ${
+                className={`flex-1 h-5 rounded flex items-center justify-center text-[10px] font-bold ${
                   won
                     ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
                     : 'bg-rose-500/30 text-rose-300 border border-rose-500/40'
@@ -131,7 +133,7 @@ function TrendCard({ trend: t }: { trend: PlayerTrend }) {
               </div>
             ))
           ) : (
-            <span className="text-[10px] text-slate-600">Sin datos</span>
+            <span className="text-[11px] text-slate-400">Sin datos</span>
           )}
         </div>
       </div>
@@ -195,7 +197,7 @@ function TrendCard({ trend: t }: { trend: PlayerTrend }) {
       </div>
     </div>
   );
-}
+});
 
 function PatternBox({
   icon,
@@ -212,11 +214,11 @@ function PatternBox({
     <div className={`px-2 py-1.5 rounded ${
       highlight ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-slate-900/40'
     }`}>
-      <div className="flex items-center gap-1 text-[9px] text-slate-500 mb-0.5">
+      <div className="flex items-center gap-1 text-[10px] text-slate-400 mb-0.5">
         {icon}
         <span className="truncate">{label}</span>
       </div>
-      <div className={`text-[11px] font-bold ${highlight ? 'text-amber-300' : 'text-slate-300'}`}>
+      <div className={`text-[11px] font-bold ${highlight ? 'text-amber-300' : 'text-slate-200'}`}>
         {value}
       </div>
     </div>
@@ -227,7 +229,7 @@ function MiniStat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="text-center">
       <div className="text-sm font-bold text-slate-200 font-mono">{value}</div>
-      <div className="text-[9px] text-slate-500">{label}</div>
+      <div className="text-[10px] text-slate-400">{label}</div>
     </div>
   );
 }

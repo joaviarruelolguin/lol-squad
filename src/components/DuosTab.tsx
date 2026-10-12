@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { AlertTriangle, Flame, ShieldAlert } from 'lucide-react';
 import { DuoResult } from '@/lib/types';
@@ -97,7 +97,7 @@ export default function DuosTab({
         </div>
       ) : duoData && duoData.duos.length === 0 ? (
         <div className="p-12 text-center text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800">
-          <ShieldAlert className="w-10 h-10 mx-auto mb-3 text-slate-600" />
+          <ShieldAlert className="w-10 h-10 mx-auto mb-3 text-slate-500" />
           {duoData.status === 'error'
             ? 'No se pudo analizar sinergias. Revisá los errores arriba.'
             : 'No se encontraron partidas recientes donde hayan jugado 2+ miembros de la squad juntos.'}
@@ -109,7 +109,7 @@ export default function DuosTab({
               {duoData?.scannedMatches} partidas compartidas analizadas ·{' '}
               {duoData?.membersAnalyzed} miembros
             </div>
-            <div className="text-[11px] text-slate-600">
+            <div className="text-[11px] text-slate-500">
               Solo dúos con 2+ partidas juntos · últimas 20 partidas Flex de cada
               jugador
             </div>
@@ -155,7 +155,7 @@ export default function DuosTab({
 
                   <div className="text-[11px] text-slate-500 mt-1 flex justify-between items-center">
                     <span className="text-emerald-400/80">{d.wins} ganadas</span>
-                    <span className="text-slate-600 font-mono text-[10px]">
+                    <span className="text-slate-500 font-mono text-[10px]">
                       {d.wins}V{d.losses}D de {d.totalGames}
                     </span>
                     <span className="text-rose-400/80">{d.losses} perdidas</span>
