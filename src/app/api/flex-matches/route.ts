@@ -15,6 +15,16 @@ import {
 import { getMatchesWithCache } from '@/lib/matchCache';
 import { guardRead } from '@/lib/rateLimit';
 
+/**
+ * Riot codifica el match id como `REGION_<epoch en segundos>` (ej: LA2_1629931414).
+ * El epoch es monótono, así que comparar el sufijo numérico equivale a comparar
+ * la fecha. Nos ahorra pedir el detalle de todas las partidas solo para ordenarlas.
+ */
+function matchIdTime(matchId: string): number {
+  const n = Number(matchId.slice(matchId.indexOf('_') + 1));
+  return Number.isFinite(n) ? n : 0;
+}
+
 export async function GET(req: Request) {
   await connection();
 
@@ -77,9 +87,25 @@ export async function GET(req: Request) {
     }
   }
 
-  // --- Paso 2: paginar y traer SOLO el detalle de esta página ---
-  const total = orderedMatchIds.length;
-  const pageIds = orderedMatchIds.slice(offset, offset + limit);
+  // --- Paso 2: filtrar a partidas de 2+ y ordenar antes de paginar ---
+  //
+  // `orderedMatchIds` sale en orden de miembro, no de fecha: es el concat de
+  // "las partidas del miembro 1, después las del miembro 2...". Si pagináramos
+  // sobre eso, la página 1 sería siempre el inicio del primer miembro de la
+  // lista, y sumar alguien nuevo (que aporta al final) no cambiaba casi nada.
+  //
+  // El ID de Riot es `LA2_<epoch en segundos>` y es monótono, así que ordenar
+  // por el sufijo numérico da el orden cronológico sin gastar una request.
+  //
+  // También filtramos acá las que tienen 2+ de la squad: `matchToPuuids` ya
+  // nos dice cuántos hay en cada partida sin necesidad de traer el detalle.
+  const sharedMatchIds = orderedMatchIds
+    .filter((id) => (matchToPuuids.get(id)?.size ?? 0) >= 2)
+    .sort((a, b) => matchIdTime(b) - matchIdTime(a));
+
+  // --- Paso 3: traer SOLO el detalle de esta página ---
+  const total = sharedMatchIds.length;
+  const pageIds = sharedMatchIds.slice(offset, offset + limit);
   const hasMore = offset + limit < total;
 
   const puuidToMember = new Map<string, SquadMember>(
