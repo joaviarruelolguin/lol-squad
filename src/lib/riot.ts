@@ -20,6 +20,16 @@ export function getRegionalRouting(region: RiotRegion): RegionalRouting {
 // Caché compartida en memoria (vive mientras dura el proceso del servidor)
 export const cache = new SimpleCache(5 * 60 * 1000);
 
+/**
+ * Requests a Riot que están en curso, indexadas por URL.
+ *
+ * La caché solo ayuda si la request anterior ya terminó. Cuando varias
+ * pestañas de la app piden lo mismo en paralelo (que es lo que pasa al abrir
+ * Sinergia), todas ven la caché vacía y todas pegan a Riot. Con este mapa,
+ * la primera dispara y las demás esperan su resultado.
+ */
+const inflight = new Map<string, Promise<unknown>>();
+
 // ============================================================
 // Rate limiter global: las dev keys de Riot permiten ~2 req/seg
 // Serializamos las peticiones para no comernos el 429.
@@ -156,6 +166,33 @@ export class RiotApiClient {
   }
 
   private async fetchRiot<T>(url: string, ttlMs?: number): Promise<T> {
+    // 1. Revisar caché
+    const cached = cache.get<T>(url);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    // 2. Si esta URL ya está en vuelo, esperarla en vez de pegarle otra vez a
+    // Riot. Sin esto, abrir la pestaña de Sinergia dispara trends, trios,
+    // composition y duos a la vez: los cuatro piden las mismas ~40 partidas,
+    // los cuatro la piden por su cuenta y la cola se llena con 160 requests
+    // en lugar de 40 (191s medidos, contra ~33s con deduplicación).
+    const inFlight = inflight.get(url);
+    if (inFlight) return inFlight as Promise<T>;
+
+    const promise = this.fetchRiotInner<T>(url, ttlMs);
+    inflight.set(url, promise);
+
+    try {
+      return await promise;
+    } finally {
+      // Solo se borra si sigue siendo esta: si otra request reemplazó la
+      // entrada mientras esperábamos, no la tocamos.
+      if (inflight.get(url) === promise) inflight.delete(url);
+    }
+  }
+
+  private async fetchRiotInner<T>(url: string, ttlMs?: number): Promise<T> {
     // 1. Revisar caché
     const cached = cache.get<T>(url);
     if (cached !== undefined) {
