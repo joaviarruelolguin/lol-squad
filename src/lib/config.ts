@@ -22,3 +22,18 @@ export const APP_DESCRIPTION =
 export const APP_REPO_URL =
   process.env.NEXT_PUBLIC_APP_REPO_URL ||
   'https://github.com/joaviarruelolguin/lol-squad';
+
+/**
+ * Muestra la barra de estado y el modal para cargar la API key de Riot.
+ *
+ * Por defecto está oculta: si la key está puesta como variable de entorno en
+ * Vercel, esa barra es ruido (y encima sondea /api/riot-key cada 60s). Para
+ * volver a mostrarla en un deployment puntual, agregá
+ * `NEXT_PUBLIC_SHOW_RIOT_KEY_UI=true` en Vercel y redeployá, o ponela en
+ * .env.local para desarrollo local.
+ *
+ * Importante: esto solo oculta la UI. El código de RiotKeyManager y el endpoint
+ * /api/riot-key siguen intactos por si hacen falta de nuevo.
+ */
+export const SHOW_RIOT_KEY_UI =
+  process.env.NEXT_PUBLIC_SHOW_RIOT_KEY_UI === 'true';

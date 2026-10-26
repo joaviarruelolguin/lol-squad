@@ -21,7 +21,7 @@ import {
   TableRow,
   PlayerMetrics,
 } from '@/lib/types';
-import { APP_TITLE, APP_SUBTITLE, APP_REPO_URL } from '@/lib/config';
+import { APP_TITLE, APP_SUBTITLE, APP_REPO_URL, SHOW_RIOT_KEY_UI } from '@/lib/config';
 import { clearAllFetchCache } from '@/hooks/useCachedFetch';
 import { Skeleton } from '@/components/Skeleton';
 import SectionHeader from '@/components/SectionHeader';
@@ -283,8 +283,13 @@ export default function Home() {
         </div>
       </header>
 
-      {/* API KEY STATUS BAR */}
-      <RiotKeyManager onKeyChanged={handleRiotKeyChanged} />
+      {/* API KEY STATUS BAR
+          Oculta por defecto: ver SHOW_RIOT_KEY_UI en lib/config.ts. El
+          componente y su endpoint siguen en el código, por si hace falta
+          volver a habilitarlos. */}
+      {SHOW_RIOT_KEY_UI && (
+        <RiotKeyManager onKeyChanged={handleRiotKeyChanged} />
+      )}
 
       {/* NAV TABS
           role="tablist" + aria: antes eran 6 <button> sueltos y un lector de
