@@ -283,10 +283,30 @@ export default function Home() {
         </div>
       </header>
 
-      {/* API KEY STATUS BAR
-          Oculta por defecto: ver SHOW_RIOT_KEY_UI en lib/config.ts. El
-          componente y su endpoint siguen en el código, por si hace falta
-          volver a habilitarlos. */}
+      {/* ────────────────────────────────────────────────────────────────
+          API KEY STATUS BAR — OCULTA POR DEFECTO (no eliminada)
+
+          Si estás leyendo esto y no ves la barra "Cambiar API key" más abajo,
+          es intencional: no es un código muerto ni un import olvidado.
+
+          El motivo es que este repo apunta a dos situaciones distintas:
+
+            a) Deployment con la key puesta como variable de entorno en Vercel
+               (o en .env.local). Ahí la barra es ruido: ya está configurada,
+               y encima RiotKeyManager sondea /api/riot-key cada 60 segundos
+               para nada.
+            b) Deployment sin key en el entorno, donde querés cargarla o
+               renovarla desde la interfaz sin redeployar (las keys de
+               desarrollo de Riot vencen cada 24h).
+
+          Arranca en (a). Para pasar a (b) alcanza con definir
+          NEXT_PUBLIC_SHOW_RIOT_KEY_UI=true en el entorno y redeployar,
+          porque las NEXT_PUBLIC_ se inlinean en tiempo de build. Detalle en
+          SHOW_RIOT_KEY_UI (src/lib/config.ts).
+
+          Nada de esto toca el componente: RiotKeyManager.tsx y el endpoint
+          /api/riot-key siguen intactos y funcionando.
+          ──────────────────────────────────────────────────────────────── */}
       {SHOW_RIOT_KEY_UI && (
         <RiotKeyManager onKeyChanged={handleRiotKeyChanged} />
       )}

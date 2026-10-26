@@ -155,7 +155,7 @@ Si no configurás Supabase, la app guarda todo en archivos locales (`data/*.json
 
 Cuando la API key de Riot venza (cada 24h), editá `RIOT_API_KEY` en Vercel y se redeploya solo.
 
-También podés cambiar la key desde la misma app: botón **"Cambiar API key"** en la barra superior. La app la valida contra Riot antes de guardarla.
+**Sobre el botón "Cambiar API key":** la barra de estado y el modal para cargar la key desde la interfaz **están ocultas por defecto**, no eliminadas. Es una decisión por deployment: si la key ya viene dada por variable de entorno, esa barra es ruido (y encima sondea `/api/riot-key` cada 60 segundos sin que nadie la mire). Para volver a mostrarla, agregá `NEXT_PUBLIC_SHOW_RIOT_KEY_UI=true` en el entorno y redeployá —las `NEXT_PUBLIC_` se inlinean en el build, así que un cambio en caliente no alcanza—. El componente `RiotKeyManager.tsx` y el endpoint `/api/riot-key` siguen intactos y funcionando; el switch vive en `SHOW_RIOT_KEY_UI` (`src/lib/config.ts`).
 
 ---
 
@@ -172,7 +172,7 @@ npm run test:watch
 
 ### Tests
 
-235 tests sobre la lógica que no se ve en pantalla: clasificación de errores de Riot, rate limiting, validación de input, TTL y tope de la caché, enmascarado de la API key, el mapeo región → shard, el parseo de match IDs y el cálculo completo del MVP semanal.
+221 tests sobre la lógica que no se ve en pantalla: clasificación de errores de Riot, rate limiting, validación de input, TTL y tope de la caché, enmascarado de la API key, el mapeo región → shard, el parseo de match IDs y el cálculo completo del MVP semanal.
 
 ```bash
 npm run test

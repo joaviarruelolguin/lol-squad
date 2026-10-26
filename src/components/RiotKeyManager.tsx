@@ -17,6 +17,23 @@ const POLL_MS = 60_000;
 /**
  * Barra de estado de la API key de Riot + modal para cambiarla.
  *
+ * ⚠️ ESTE COMPONENTE ESTÁ OCULTO POR DEFECTO, PERO SIGUE FUNCIONANDO.
+ *
+ * No se eliminó: se eligió no montarlo. page.tsx lo renderiza condicionalmente
+ * según SHOW_RIOT_KEY_UI (src/lib/config.ts), que es opt-in (default: oculta).
+ * Si estás viendo este archivo y no aparece en la UI, no es un bug ni código
+ * huérfano. Para activarlo, definí NEXT_PUBLIC_SHOW_RIOT_KEY_UI=true en el
+ * entorno (Vercel o .env.local) y redeployá: las NEXT_PUBLIC_ se inlinean en
+ * build, así que un cambio en caliente no alcanza.
+ *
+ * El endpoint /api/riot-key que usa abajo tampoco se tocó.
+ *
+ * Motivo de ocultarlo: cuando la key ya viene dada por variable de entorno,
+ * esta barra suma ruido y encima sondea el estado cada 60s sin que nadie la
+ * mire. Se mantiene para deployments donde haya que cargarla o renovarla
+ * desde la interfaz (las keys de desarrollo de Riot vencen cada 24h) sin
+ * tocar el deploy.
+ *
  * Las keys de desarrollo vencen cada 24h, así que el componente sondea el
  * estado para tener el contador al día. Cuando guardás una key nueva llama a
  * `onKeyChanged` para que la página recargue todo.

@@ -6,13 +6,17 @@ Guía rápida para usar el dashboard. No hace falta saber nada técnico.
 
 ## Lo primero: la API key
 
-Arriba del todo hay una barrita con el estado de la API key de Riot:
+La app necesita una API key de Riot. **En este deployment está puesta como variable de entorno**, así que la barrita de estado que muestra el botón **"Cambiar API key"** está oculta: no la vas a ver arriba, y eso es a propósito.
+
+Cuando la key venza (Riot las vence cada 24 horas) se cambia desde Vercel: **Project Settings → Environment Variables → `RIOT_API_KEY`**. Guardás y Vercel redeploya solo.
+
+Si en algún deployment hace falta cargarla o renovarla desde la misma app, se habilita la barra definiendo `NEXT_PUBLIC_SHOW_RIOT_KEY_UI=true` en el entorno. Aparece así:
 
 - 🟢 **Verde**: todo bien
 - 🟡 **Amarillo**: le quedan menos de 3 horas
 - 🔴 **Rojo**: vencio (pasa cada 24 horas)
 
-Si está en rojo, o no hay ninguna, tenés que poner una:
+Con la barra visible, el flujo es:
 
 1. Entrá a [developer.riotgames.com](https://developer.riotgames.com) con tu cuenta de Riot
 2. Buscá la seccion **API Key (Development)** y tocá **Generate**
@@ -152,7 +156,7 @@ Es normal y no es un error. Si esperaste 5 minutos y sigue cargando, recargá la
 
 **Si ves "rate limit"**, estás pidiendo demasiadas cosas seguidas. Esperá unos segundos o usá "Forzar" en vez de "Actualizar" repetidamente.
 
-**La API key vence cada 24h.** No es un bug, es la política de Riot para keys de desarrollo. Cuando el badge se pone rojo, cambiala.
+**La API key vence cada 24h.** No es un bug, es la política de Riot para keys de desarrollo (las *personales/estables* no vencen). Si usás una de desarrollo, cuando deje de funcionar cambiala en Vercel (`RIOT_API_KEY`) y redeployá. El badge rojo que te lo avisaba arriba solo aparece si habilitaste la barra con `NEXT_PUBLIC_SHOW_RIOT_KEY_UI=true` (ver "Lo primero: la API key").
 
 **No toques "Forzar" por costumbre.** Es la única forma de gastar cuota de la API de Riot de verdad. Para refrescar de todos modos alcanza con **Actualizar**.
 
