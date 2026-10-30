@@ -1,5 +1,45 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { maskKey } from '@/lib/riotKey';
+
+/**
+ * Estado controlable de los módulos externos.
+ *
+ * Va en vi.hoisted porque vi.mock se izan por encima de los imports: si el
+ * factory tocara variables declaradas más abajo, entraría en TDZ justo cuando
+ * se evalúa el grafo de módulos.
+ */
+const ext = vi.hoisted(() => ({
+  supabaseConfigured: false,
+  supabaseRow: null as { api_key: string } | null,
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  isSupabaseConfigured: () => ext.supabaseConfigured,
+  getSupabase: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          single: async () =>
+            ext.supabaseRow
+              ? { data: ext.supabaseRow, error: null }
+              : { data: null, error: { message: 'Sin fila' } },
+        }),
+      }),
+    }),
+  }),
+}));
+
+// getKeyMeta lee data/riot-key.json del disco real. Sin este mock, un key file
+// en la máquina que corre los tests haría fallar los que esperan "sin key".
+vi.mock('fs', () => {
+  const api = {
+    existsSync: () => false,
+    mkdirSync: () => undefined,
+    readFileSync: () => '',
+    writeFileSync: () => undefined,
+  };
+  return { ...api, default: api };
+});
 
 /**
  * La key de Riot es una credencial. Este módulo es lo único que la muestra al
@@ -51,5 +91,124 @@ describe('maskKey', () => {
     const masked = maskKey(key);
     expect(masked.split('...')).toHaveLength(2);
     expect(masked.split('...')[1]).toHaveLength(4);
+  });
+});
+
+// ============================================================================
+// getKeyMeta: qué fuente manda
+// ============================================================================
+
+/**
+ * Este bloque existe por un bug que estuvo en producción.
+ *
+ * getKeyMeta miraba Supabase primero y la variable de entorno después. Alguien
+ * guardó una key desde la UI, quedó en la tabla riot_key, y desde ese momento
+ * RIOT_API_KEY se ignoró. Un deploy con la key correcta en el entorno no la
+ * usaba: el portal de Riot mostraba la key aprobada mientras la app recibía
+ * 401 con una vieja. Cuatro días de datos caídos y la única señal (el badge de
+ * la barra de la API key) recién se había ocultado.
+ *
+ * El orden ahora es entorno > Supabase > archivo. No cambia sin test.
+ */
+describe('getKeyMeta: precedencia de fuentes', () => {
+  const ENV_KEY = 'RGAPI-entorno-valida-0000';
+  const DB_KEY = 'RGAPI-base-de-datos-vieja';
+
+  const ORIGINAL = {
+    RIOT_API_KEY: process.env.RIOT_API_KEY,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+
+  function restoreEnv() {
+    for (const [k, v] of Object.entries(ORIGINAL)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+
+  /** Módulo recién importado: sin la caché de 30s ni el flag de aviso. */
+  async function loadModule() {
+    vi.resetModules();
+    return await import('@/lib/riotKey');
+  }
+
+  beforeEach(() => {
+    ext.supabaseConfigured = false;
+    ext.supabaseRow = null;
+    delete process.env.RIOT_API_KEY;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    restoreEnv();
+    vi.restoreAllMocks();
+  });
+
+  it('la variable de entorno gana aunque Supabase tenga otra guardada', async () => {
+    process.env.RIOT_API_KEY = ENV_KEY;
+    ext.supabaseConfigured = true;
+    ext.supabaseRow = { api_key: DB_KEY };
+
+    const { getKeyMeta } = await loadModule();
+    const meta = await getKeyMeta();
+
+    expect(meta?.key).toBe(ENV_KEY);
+    expect(meta?.key).not.toBe(DB_KEY);
+  });
+
+  it('sin variable de entorno, se usa lo que hay en Supabase', async () => {
+    ext.supabaseConfigured = true;
+    ext.supabaseRow = { api_key: DB_KEY };
+
+    const { getKeyMeta } = await loadModule();
+    const meta = await getKeyMeta();
+
+    expect(meta?.key).toBe(DB_KEY);
+  });
+
+  it('sin ninguna de las dos, no hay key', async () => {
+    const { getKeyMeta } = await loadModule();
+    expect(await getKeyMeta()).toBeNull();
+  });
+
+  it('avisa cuando el entorno y Supabase guardan keys distintas', async () => {
+    process.env.RIOT_API_KEY = ENV_KEY;
+    ext.supabaseConfigured = true;
+    ext.supabaseRow = { api_key: DB_KEY };
+
+    const { getKeyMeta } = await loadModule();
+    await getKeyMeta();
+
+    // Sin este aviso, poner la key en el entorno "no hace nada" y no se entiende
+    // por qué: era justo el estado que dejaba el bug.
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    const msg = String(vi.mocked(console.warn).mock.calls[0][0]);
+    expect(msg).toContain(maskKey(ENV_KEY));
+    expect(msg).toContain(maskKey(DB_KEY));
+  });
+
+  it('no avisa cuando las dos coinciden', async () => {
+    process.env.RIOT_API_KEY = ENV_KEY;
+    ext.supabaseConfigured = true;
+    ext.supabaseRow = { api_key: ENV_KEY };
+
+    const { getKeyMeta } = await loadModule();
+    await getKeyMeta();
+
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('no va a consultar a Supabase si no está configurado', async () => {
+    process.env.RIOT_API_KEY = ENV_KEY;
+    ext.supabaseConfigured = false;
+
+    const { getKeyMeta } = await loadModule();
+    const meta = await getKeyMeta();
+
+    expect(meta?.key).toBe(ENV_KEY);
+    expect(console.warn).not.toHaveBeenCalled();
   });
 });

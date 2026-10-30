@@ -15,6 +15,9 @@ export interface RiotKeyMeta {
 let cache: { meta: RiotKeyMeta; expiresAt: number } | null = null;
 const CACHE_TTL = 30_000; // 30 segundos
 
+// Para emitir una sola vez el aviso de "entorno y Supabase no coinciden".
+let overrideWarningDone = false;
+
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -78,7 +81,25 @@ export async function getKeyMeta(): Promise<RiotKeyMeta | null> {
 
   let meta: RiotKeyMeta | null = null;
 
-  if (isSupabaseConfigured()) {
+  // La variable de entorno manda; Supabase queda como respaldo.
+  //
+  // Antes iba al revés y eso produjo un bug silencioso en producción: alguien
+  // guardó una key desde la UI, quedó en la tabla riot_key, y a partir de ese
+  // momento RIOT_API_KEY dejó de mirarse. Un deploy nuevo con la key correcta
+  // en el entorno no la usaba, mientras el portal de Riot mostraba la key
+  // aprobada y la app seguía recibiendo 401 con la vieja. Dos fuentes de verdad,
+  // una sola mirada y ningún aviso: la única señal era el badge de la barra de
+  // la API key, que es la que se ocultó.
+  //
+  // La variable de entorno es la que define el deployment: en Vercel es lo que
+  // cargaste en Project Settings y en local el .env.local. Tiene que poder
+  // imponerse sin que nadie tenga que tocar una base de datos.
+  const envKey = process.env.RIOT_API_KEY;
+
+  if (envKey) {
+    meta = { key: envKey, setAt: new Date().toISOString() };
+    await warnIfSupabaseHasADifferentKey(envKey);
+  } else if (isSupabaseConfigured()) {
     const { data, error } = await getSupabase()
       .from('riot_key')
       .select('api_key, set_at')
@@ -93,21 +114,48 @@ export async function getKeyMeta(): Promise<RiotKeyMeta | null> {
       meta = fileGetKeyMeta();
     }
   } else {
-    // La variable de entorno gana sobre el archivo local.
-    // Esto evita que un riot-key.json viejo pise una key nueva
-    // cargada en .env.local / Vercel.
-    const envKey = process.env.RIOT_API_KEY;
-    if (envKey) {
-      meta = { key: envKey, setAt: new Date().toISOString() };
-    } else {
-      meta = fileGetKeyMeta();
-    }
+    meta = fileGetKeyMeta();
   }
 
   if (meta) {
     cache = { meta, expiresAt: Date.now() + CACHE_TTL };
   }
   return meta;
+}
+
+/**
+ * Avisa cuando el entorno y Supabase guardan keys distintas.
+ *
+ * Sin esto, poner una key en Vercel "no hace nada" y no se entiende por qué,
+ * que es exactamente el estado que dejó el bug de arriba. Sale por console.warn,
+ * así que aparece en los logs de Vercel.
+ *
+ * Se emite una sola vez por proceso. En serverless cada instancia fría lo tira
+ * una vez: suficiente para que se vea en los logs sin repetir lo mismo cada 30
+ * segundos, que es lo que dura la caché de la key.
+ */
+async function warnIfSupabaseHasADifferentKey(envKey: string): Promise<void> {
+  if (overrideWarningDone || !isSupabaseConfigured()) return;
+  overrideWarningDone = true;
+
+  try {
+    const { data, error } = await getSupabase()
+      .from('riot_key')
+      .select('api_key')
+      .eq('id', 1)
+      .single();
+
+    if (!error && data?.api_key && data.api_key !== envKey) {
+      console.warn(
+        `riotKey: RIOT_API_KEY (${maskKey(envKey)}) está poniendo fuera de ` +
+          `servicio la key guardada en Supabase (${maskKey(data.api_key)}), ` +
+          'que no se va a usar. Si querés que mande la de Supabase, vaciá ' +
+          'RIOT_API_KEY en el entorno y redeployá.'
+      );
+    }
+  } catch {
+    // Es solo diagnóstico: si no se puede consultar, seguimos con la de entorno.
+  }
 }
 
 export async function getRiotKey(): Promise<string> {
@@ -128,6 +176,17 @@ export async function setRiotKey(key: string): Promise<RiotKeyMeta> {
     }
   } else {
     fileSetRiotKey(key);
+  }
+
+  // Guardar no alcanza si el entorno define RIOT_API_KEY: getKeyMeta() le da
+  // prioridad al entorno, así que esta key recién guardada no se va a usar.
+  // Lo avisamos porque si no es el clásico "lo guardé y no pasó nada".
+  if (process.env.RIOT_API_KEY && process.env.RIOT_API_KEY !== key) {
+    console.warn(
+      `riotKey: se guardó ${maskKey(key)} pero RIOT_API_KEY del entorno ` +
+        `(${maskKey(process.env.RIOT_API_KEY)}) tiene prioridad y es la que ` +
+        'se va a usar. Vaciala del entorno para que mande la recién guardada.'
+    );
   }
 
   // Actualizamos la caché inmediatamente
