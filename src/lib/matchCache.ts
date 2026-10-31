@@ -89,14 +89,29 @@ export async function getMatchesWithCache(
   }
 
   const missing: string[] = [];
+  // Detalle cacheado pero sin timeline.
+  //
+  // No entra en `missing`: el detalle ya lo tenemos, solo falta pagar el request
+  // del timeline. Antes devolvíamos `timeline: null` y listo, y eso dejó la
+  // timeline del chat (LaneDiffPanel) rota de forma permanente en producción:
+  // /api/weekly y /api/flex-matches cargan primero con withTimeline=false, así
+  // que guardan todas las partidas sin timeline, y cuando después el chat
+  // pedía una de esas, la fila ya existía y nunca más se volvía a preguntar a
+  // Riot. Devolvía 400 "La partida no tiene timeline disponible." para partidas
+  // que Riot tenía perfectamente.
+  const missingTimeline: string[] = [];
 
   for (const id of uniqueIds) {
     const row = cacheMap.get(id);
     if (row?.detail) {
       const detail = typeof row.detail === 'string' ? JSON.parse(row.detail) : row.detail;
       let timeline = null;
-      if (withTimeline && row.timeline) {
-        timeline = typeof row.timeline === 'string' ? JSON.parse(row.timeline) : row.timeline;
+      if (withTimeline) {
+        if (row.timeline) {
+          timeline = typeof row.timeline === 'string' ? JSON.parse(row.timeline) : row.timeline;
+        } else {
+          missingTimeline.push(id);
+        }
       }
       results.push({ matchId: id, info: detail?.info || detail, timeline });
     } else {
@@ -108,6 +123,34 @@ export async function getMatchesWithCache(
   const before = results.length;
   await runBatched(missing);
 
+  // Rellenar los timelines que faltaban sobre partidas ya cacheadas.
+  //
+  // Mismo lote que arriba: el limiter global es el que reparte, esto solo evita
+  // que todas las esperas se acumulen en serie.
+  const timelineById = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < missingTimeline.length; i += concurrency) {
+    const batch = missingTimeline.slice(i, i + concurrency);
+    const fetched = await Promise.allSettled(
+      batch.map(async (id) => ({
+        id,
+        timeline: await client.getMatchTimeline(id, routingFor(id)),
+      }))
+    );
+    for (const f of fetched) {
+      if (f.status === 'fulfilled' && f.value?.timeline) {
+        timelineById.set(f.value.id, f.value.timeline);
+      }
+    }
+  }
+
+  // `results` ya tiene la partida con timeline en null: hay que pisarlo.
+  for (const m of results) {
+    const tl = timelineById.get(m.matchId);
+    if (tl) m.timeline = tl;
+  }
+
+  const now = new Date().toISOString();
+
   // Persistir las que acabamos de traer.
   //
   // Nunca escribimos `timeline: null`: /api/trends pide las partidas con
@@ -118,11 +161,27 @@ export async function getMatchesWithCache(
     const row: Record<string, unknown> = {
       match_id: m.matchId,
       detail: { info: m.info },
-      fetched_at: new Date().toISOString(),
+      fetched_at: now,
     };
     if (m.timeline) row.timeline = { info: m.timeline.info };
     return row;
   });
+
+  // Partidas que ya estaban y a las que solo les sumamos el timeline.
+  //
+  // Se manda el detalle igual aunque lo tengamos: el upsert reemplaza las
+  // columnas que viajan, y mandar solo `timeline` dejaría el resto suelto.
+  for (const id of missingTimeline) {
+    const tl = timelineById.get(id);
+    if (!tl) continue;
+    const m = results.find((r) => r.matchId === id);
+    toStore.push({
+      match_id: id,
+      detail: { info: m?.info },
+      timeline: { info: tl.info },
+      fetched_at: now,
+    });
+  }
 
   if (toStore.length > 0) {
     try {
